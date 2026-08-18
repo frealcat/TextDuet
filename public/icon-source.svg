@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">TextDuet icon</title>
+  <desc id="desc">Two offset text panels forming a bilingual duet.</desc>
+  <rect width="512" height="512" rx="96" fill="#126b57"/>
+  <path d="M104 112c0-17.7 14.3-32 32-32h176c17.7 0 32 14.3 32 32v224c0 17.7-14.3 32-32 32H136c-17.7 0-32-14.3-32-32V112Z" fill="#ffffff"/>
+  <path d="M208 176c0-17.7 14.3-32 32-32h136c17.7 0 32 14.3 32 32v224c0 17.7-14.3 32-32 32H240c-17.7 0-32-14.3-32-32V176Z" fill="#ef785f"/>
+  <path d="M151 151h145v28H151zm0 62h81v28h-81zm0 62h58v28h-58z" fill="#126b57"/>
+  <path d="M257 230h102v28H257zm0 62h102v28H257zm0 62h69v28h-69z" fill="#ffffff"/>
+</svg>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Project dashboard</title>
+  </head>
+  <body>
+    <header>
+      <button type="button" data-td-expect="exclude">Open menu</button>
+      <ol class="breadcrumbs" data-td-expect="exclude">
+        <li data-td-expect="exclude">Workspace</li>
+        <li data-td-expect="exclude">Project dashboard</li>
+      </ol>
+      <form role="search" data-td-expect="exclude">
+        <label>Search <input type="search" value="private draft query" data-td-expect="exclude" /></label>
+      </form>
+    </header>
+    <aside>
+      <a href="/inbox">Inbox</a>
+      <a href="/settings">Settings</a>
+    </aside>
+    <main>
+      <article>
+        <h1 data-td-expect="include">Weekly project update</h1>
+        <p data-td-expect="include">The team completed the accessibility review and resolved three keyboard issues.</p>
+        <p data-td-expect="include">Next week we will test the release candidate with a larger document set.</p>
+      </article>
+      <section aria-label="Editor">
+        <h2 data-td-expect="include">Edit update</h2>
+        <div contenteditable="true" data-td-expect="exclude">Unpublished text inside an editor must stay private.</div>
+        <textarea data-td-expect="exclude">Unpublished notes must not be translated.</textarea>
+        <button type="button" data-td-expect="exclude">Save draft</button>
+      </section>
+    </main>
+    <div aria-hidden="true" data-td-expect="exclude">Hidden onboarding instructions must not be translated.</div>
+  </body>
+</html>

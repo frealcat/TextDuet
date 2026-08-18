@@ -1,0 +1,42 @@
+{
+  "name": "textduet",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "A local-first, open-source bilingual webpage translator powered by user-provided model APIs.",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "prepare": "wxt prepare",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:browser:corpus": "node .playwright/extension-corpus.mjs",
+    "test:browser:billing": "node .playwright/extension-billing.mjs",
+    "test:browser:options": "node .playwright/options-visual-td017.mjs",
+    "test:browser:sites": "node .playwright/extension-site-matrix.mjs",
+    "release:check": "npm run typecheck && npm test && npm run build && npm run zip && node scripts/verify-release.mjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-radio-group": "^1.4.7",
+    "@wxt-dev/module-react": "^1.2.2",
+    "echarts": "^6.1.0",
+    "lucide-react": "^1.31.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "wxt": "^0.21.4"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

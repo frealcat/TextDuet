@@ -1,0 +1,91 @@
+name: Website compatibility report
+description: Report missing, incorrect, duplicated, or broken webpage translations.
+title: "[Site] "
+labels:
+  - compatibility
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, private URLs, account information, unpublished text, or page content you cannot share publicly.
+
+  - type: input
+    id: domain
+    attributes:
+      label: Website domain
+      description: Domain only, for example developer.mozilla.org.
+      placeholder: example.com
+    validations:
+      required: true
+
+  - type: input
+    id: public_url
+    attributes:
+      label: Public example URL
+      description: Optional, but it must work without an account or private access.
+      placeholder: https://example.com/public-page
+
+  - type: dropdown
+    id: problem
+    attributes:
+      label: Problem type
+      options:
+        - Important text is not translated
+        - Navigation, buttons, code, or forms are translated incorrectly
+        - Translation is inserted under the wrong paragraph
+        - Duplicate translations appear
+        - Page layout or interaction breaks
+        - Dynamic content is not translated
+        - Translation is too slow
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open the public page
+        2. Click TextDuet
+        3. Choose ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+
+  - type: input
+    id: textduet_version
+    attributes:
+      label: TextDuet version
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: chrome_version
+    attributes:
+      label: Chrome version
+      placeholder: chrome://version
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I removed API keys, private URLs, account data, and unpublished content.
+          required: true

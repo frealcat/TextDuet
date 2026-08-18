@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>How city trees cool a neighborhood</title>
+    <style>
+      body { color: rgb(23, 33, 30); background: #fff; }
+      .contrast-risk { color: rgb(23, 33, 30); background: rgb(249, 115, 22); }
+    </style>
+  </head>
+  <body>
+    <nav aria-label="Primary navigation" data-td-expect="exclude">
+      <a href="/">Home</a>
+      <a href="/topics">Topics</a>
+      <button type="button" data-td-expect="exclude">Sign in</button>
+    </nav>
+    <main>
+      <article>
+        <h1 data-td-expect="include">How city trees cool a neighborhood</h1>
+        <p class="contrast-risk" data-td-expect="include">Trees cool streets by casting shade and releasing water through their leaves.</p>
+        <p data-td-expect="include">A healthy canopy can also make a walking route quieter and more comfortable.</p>
+        <h2 data-td-expect="include">What planners can measure</h2>
+        <ul>
+          <li data-td-expect="include">Surface temperature before and after planting.</li>
+          <li data-td-expect="include">Shade coverage at different times of day.</li>
+          <li data-td-expect="include">Tree survival during the first three summers.</li>
+        </ul>
+        <blockquote data-td-expect="include">Planting is the beginning of the work, not the end.</blockquote>
+        <figure>
+          <div role="img" aria-label="A tree-lined street"></div>
+          <figcaption data-td-expect="include">A shaded street during a summer afternoon.</figcaption>
+        </figure>
+        <table>
+          <thead><tr><th>Area</th><th>Canopy target</th></tr></thead>
+          <tbody><tr><td data-td-expect="include">Town center</td><td data-td-expect="include">25 percent</td></tr></tbody>
+        </table>
+      </article>
+    </main>
+    <footer><p data-td-expect="exclude">Privacy · Terms · Contact</p></footer>
+  </body>
+</html>

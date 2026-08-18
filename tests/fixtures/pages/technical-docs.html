@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Widget API reference</title>
+  </head>
+  <body>
+    <aside>
+      <a href="#create">Create a widget</a>
+      <a href="#errors">Handle errors</a>
+    </aside>
+    <main>
+      <article>
+        <h1 data-td-expect="include">Widget API reference</h1>
+        <p data-td-expect="include">Call <code>createWidget()</code> after the document is ready.</p>
+        <div class="admonition" role="note">
+          <p data-td-expect="include">Keep the access token outside code that runs on the host page.</p>
+        </div>
+        <pre data-td-expect="exclude"><code class="language-ts">const widget = createWidget({
+  target: '#example',
+  retries: 2,
+});</code></pre>
+        <h2 id="errors" data-td-expect="include">Handle errors</h2>
+        <p data-td-expect="include">The client returns an <code>AbortError</code> when the user cancels the request.</p>
+        <p aria-label="formula" data-td-expect="include">E = mc²</p>
+      </article>
+    </main>
+  </body>
+</html>

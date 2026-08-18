@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Community discussion</title>
+  </head>
+  <body>
+    <main>
+      <article data-post-id="post-1">
+        <h1 data-td-expect="include">What makes technical documentation useful?</h1>
+        <p data-td-expect="include">I prefer examples that show both the successful path and a realistic error.</p>
+      </article>
+      <section aria-label="Comments">
+        <article data-comment-id="comment-1">
+          <p data-td-expect="include">A short example is helpful when every important assumption is visible.</p>
+          <article data-comment-id="comment-1-1">
+            <p data-td-expect="include">I agree, especially when the example can be copied into a test.</p>
+          </article>
+        </article>
+        <article data-comment-id="comment-hidden" hidden>
+          <p data-td-expect="exclude">This collapsed comment must not be translated until it becomes visible.</p>
+        </article>
+      </section>
+      <template id="new-comment-template">
+        <article data-comment-id="comment-later">
+          <p data-td-expect="include">This comment simulates content appended after the initial translation.</p>
+        </article>
+      </template>
+      <template id="stopped-comment-template">
+        <article data-comment-id="comment-after-stop">
+          <p data-td-expect="include">This comment must stay untranslated after the user stops the active run.</p>
+        </article>
+      </template>
+    </main>
+  </body>
+</html>

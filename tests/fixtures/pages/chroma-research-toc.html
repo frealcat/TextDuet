@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Context memory field notes</title>
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Site navigation" data-td-expect="exclude">
+        <a href="/">Product</a>
+        <a href="/research">Research</a>
+      </nav>
+    </header>
+    <main class="markdown-content">
+      <article>
+        <h1 data-td-expect="include">Context memory field notes</h1>
+        <p data-td-expect="include">Long prompts can make important evidence harder for a model to recover.</p>
+        <nav aria-label="Article contents">
+          <a href="#signal" data-td-expect="include">Signal placement</a>
+          <a href="#evaluation" data-td-expect="include">Evaluation method</a>
+        </nav>
+        <h2 id="signal" data-td-expect="include">Signal placement</h2>
+        <p data-td-expect="include">The test varies where a relevant statement appears in the supplied context.</p>
+        <h2 id="evaluation" data-td-expect="include">Evaluation method</h2>
+        <p data-td-expect="include">Each answer is checked against a small deterministic reference set.</p>
+      </article>
+    </main>
+  </body>
+</html>
