@@ -46,6 +46,7 @@ const harnessDir = await mkdtemp(resolve('.playwright/browser-profile/site-matri
 const extensionDir = resolve(harnessDir, 'extension');
 const profileDir = resolve(harnessDir, 'profile');
 let context;
+let reportWritten = false;
 
 try {
   await prepareTestExtension(builtExtensionDir, extensionDir, selectedSites);
@@ -152,10 +153,43 @@ try {
     },
     sites: results,
   };
+  reportWritten = true;
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
   assert.equal(acceptanceFailures.length, 0, 'accessible public pages failed acceptance');
   assert(quotaPassed, 'public-site matrix did not meet page or type quota');
+} catch (error) {
+  if (reportWritten) {
+    process.exitCode = 1;
+    process.stderr.write(`site-matrix acceptance gate failed: ${sanitizeDiagnostic(error)}\n`);
+  } else {
+    const report = {
+      runDate: new Date().toISOString(),
+      browserVersion: context?.browser()?.version() || 'unknown',
+      platform: `${process.platform}-${process.arch}`,
+      status: 'environment-failed',
+      thresholds: {
+        minimumPassingPages: minimumPassingPages,
+        minimumPassingPagesPerKind: 2,
+      },
+      summary: {
+        configured: selectedSites.length,
+        passed: 0,
+        acceptanceFailed: 0,
+        environmentFailed: selectedSites.length,
+        passedByKind: {},
+        quotaPassed: false,
+        providerRequests: 0,
+        providerMode: 'mock-intercepted',
+      },
+      failure: {
+        category: classifyHarnessFailure(error),
+        diagnostic: sanitizeDiagnostic(error),
+      },
+    };
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    process.exitCode = 2;
+  }
 } finally {
   try {
     await context?.close();
@@ -599,6 +633,19 @@ function classifyEnvironmentFailure(error) {
   if (/timeout/.test(message)) return 'navigation-timeout';
   if (/net::/.test(message)) return 'network-unavailable';
   return 'navigation-failed';
+}
+
+function classifyHarnessFailure(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (/serviceworker/.test(message)) return 'extension-service-worker-unavailable';
+  if (/browsercontext|launchpersistentcontext|browser.*launch/.test(message)) {
+    return 'browser-launch-failed';
+  }
+  if (/playwright_entry|chrome_executable|required/.test(message)) {
+    return 'test-harness-configuration';
+  }
+  if (/timeout/.test(message)) return 'test-harness-timeout';
+  return 'test-harness-initialization-failed';
 }
 
 function classifyAcceptanceFailure(error) {

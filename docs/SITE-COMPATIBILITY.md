@@ -41,7 +41,7 @@
 
 ### 2.2 可重复的 Chrome 矩阵命令
 
-仓库提供 `.playwright/extension-site-matrix.mjs`，通过 `npm run test:browser:sites` 执行。运行时把生产构建复制到临时扩展目录，只为公开页面 Origin 增加测试副本权限；生产 Manifest 不变。当前默认矩阵包含 16 个已经在本轮完整复跑并通过断言的公开 URL：React/Vue/Svelte/Vite/Astro 官方文档、GitHub README、DEV/GitHub Community/TypeScript Issue/Lobsters、arXiv 和三个创意设计站。
+仓库提供 `.playwright/extension-site-matrix.mjs`，通过 `npm run test:browser:sites` 执行。运行时把生产构建复制到临时扩展目录，只为公开页面 Origin 增加测试副本权限；生产 Manifest 不变。默认矩阵配置 16 个公开 URL：React/Vue/Svelte/Vite/Astro 官方文档、GitHub README、DEV/GitHub Community/TypeScript Issue/Lobsters、arXiv 和三个创意设计站；是否通过以最近一次可启动 Chrome Service Worker 的实际报告为准。
 
 矩阵使用 Mock Provider 拦截测试 API Origin；请求体只在浏览器进程内解析为段落数量和字符计数，报告不写入正文、译文、Key、完整 URL 参数或响应。每页执行首次翻译、缓存复跑、代码/排除区快照、链接 click 事件、停止后新增段落断言；环境导航失败最多重试两次，并归类为 `environment-failed`，不伪装成插件兼容性失败。
 

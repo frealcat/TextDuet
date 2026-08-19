@@ -857,7 +857,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| 状态 | 进行中，已完成规划与回归工具核对；公开页面结果待执行 |
+| 状态 | 进行中；本机回归被测试环境阻塞，未形成页面通过结论 |
 | 开始日期 | 2026-08-19 |
 | 所属阶段 | M2 |
 | 目标 | 用可重复的公开页面矩阵收集兼容性变化，区分环境失败与产品失败，并形成 M2 已知问题收口清单 |
@@ -886,6 +886,8 @@
 权限、隐私与成本影响：无新增权限、Provider 请求或数据离开设备。公开页面只发送给本地 Mock Provider；报告不包含正文、译文、API Key、查询参数或截图。
 
 首轮执行计划：先运行 `TEXTDUET_SITE_MIN_PASS=15 npm run test:browser:sites`，保存终端 JSON 到本地忽略目录；失败时按类别修复规则或记录环境状态，再定向运行 `TEXTDUET_SITE_IDS=<id>`。
+
+首轮执行证据（2026-08-19）：命令在测试宿主初始化阶段等待 Chrome MV3 Service Worker 超时（`browserContext.waitForEvent: Timeout 15000ms exceeded while waiting for event "serviceworker"`）。脚本现将此类失败输出为顶层 `status: environment-failed`、`category: extension-service-worker-unavailable` 并返回非零退出码；没有开始导航，也没有生成任何页面通过或产品失败结论。原因属于本机 Chrome/Playwright 扩展加载环境，需由项目所有者在其可启动 Service Worker 的 Chrome 环境完成打包、加载和人工验收后再继续关闭本条目。
 
 ## 4. 新迭代模板
 
