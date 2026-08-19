@@ -53,6 +53,7 @@ try {
   context = await chromium.launchPersistentContext(profileDir, {
     executablePath: chromeExecutable,
     headless,
+    ignoreDefaultArgs: ['--disable-extensions'],
     locale: 'en-US',
     viewport: { width: 1440, height: 1000 },
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
