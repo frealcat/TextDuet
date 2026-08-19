@@ -86,9 +86,9 @@ rg -n 'content_scripts|<all_urls>|permissions|host_permissions|optional_host_per
 ### UI 变更
 
 - 完成工程检查。
-- 在真实构建扩展中检查 Popup 和 Options；覆盖默认/窄屏/桌面、键盘和状态变化。
+- Agent 使用生产页面资产覆盖默认/窄屏/桌面、键盘和状态变化；项目所有者负责每个版本的 Chrome 打包、加载和人工验收。
 - 保存截图只用于本地 QA；含私人页面或 Key 的截图不得进入仓库。
-- 无法使用浏览器时明确记录未执行的视觉验证。
+- 项目所有者尚未反馈时明确记录未执行的安装态验收，不得由 Agent 推断通过。
 
 ### 成本、预算或日期逻辑变更
 

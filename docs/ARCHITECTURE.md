@@ -11,6 +11,7 @@
 - Lucide React：按图标导入的界面图标。
 - Apache ECharts：Options 的 token 用量折线图；只注册 Line、Grid、Tooltip、Legend 与 CanvasRenderer，不引入 React 包装层或完整图表入口。
 - Chrome Manifest V3：首发运行模型。
+- UI 主题：Popup 与 Options 共享暖纸色、白色表面、赤陶色主操作和赭石色辅助 token；主题只存在于扩展 UI 和网页状态提示样式，不进入 Provider 数据流。
 
 选择 WXT 是为了让后台、Popup、Options 与注入脚本保持独立入口。首版只构建、测试和发布 Chrome Manifest V3；项目不使用运行时远程代码。
 

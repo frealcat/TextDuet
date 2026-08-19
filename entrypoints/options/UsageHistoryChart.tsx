@@ -37,14 +37,14 @@ export function UsageHistoryChart({ dashboard, series }: UsageHistoryChartProps)
     const chart = echarts.init(element, undefined, { renderer: 'canvas' });
     const option: UsageChartOption = {
       animation: false,
-      color: ['#147d64', '#d47a44'],
+      color: ['#9c5e2e', '#7c6035'],
       grid: { top: 34, right: 16, bottom: 28, left: 48 },
       legend: {
         top: 0,
         right: 0,
         itemWidth: 10,
         itemHeight: 10,
-        textStyle: { color: '#53605b', fontSize: 11 },
+        textStyle: { color: '#6b6356', fontSize: 11 },
       },
       tooltip: {
         trigger: 'axis',
@@ -53,18 +53,18 @@ export function UsageHistoryChart({ dashboard, series }: UsageHistoryChartProps)
         type: 'category',
         boundaryGap: false,
         data: series.points.map((point) => point.date.slice(5)),
-        axisLine: { lineStyle: { color: '#dce6e1' } },
+        axisLine: { lineStyle: { color: '#e8e1d4' } },
         axisTick: { show: false },
-        axisLabel: { color: '#7b8581', fontSize: 10, hideOverlap: true },
+        axisLabel: { color: '#9a9184', fontSize: 10, hideOverlap: true },
       },
       yAxis: {
         type: 'value',
         min: 0,
         name: scale.axisName,
-        nameTextStyle: { color: '#7b8581', fontSize: 10 },
-        splitLine: { lineStyle: { color: '#edf2ef' } },
+        nameTextStyle: { color: '#9a9184', fontSize: 10 },
+        splitLine: { lineStyle: { color: '#e8e1d4' } },
         axisLabel: {
-          color: '#7b8581',
+          color: '#9a9184',
           fontSize: 10,
           formatter: (value: number) => formatTokenAxisValue(value, scale),
         },

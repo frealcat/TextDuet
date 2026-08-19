@@ -64,7 +64,7 @@ export function TranslationAppearanceControls({
               value={translationColor}
               disabled={disabled}
               aria-invalid={!isColorValid}
-              placeholder="#147d64 或 rgba(20, 125, 100, 0.9)"
+              placeholder="#9c5e2e 或 rgba(156, 94, 46, 0.9)"
               spellCheck={false}
               onChange={(event) => onTranslationColorChange(event.target.value)}
             />

@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TextDuet · 设置</title>
+<style>
+  :root{
+    /* 优选方案：暖纸 + 赤陶 + 赭石 */
+    --bg:#f5f2ec;
+    --bg-soft:#ede9e0;
+    --surface:#ffffff;
+    --surface-tint:#faf8f3;
+    --ink:#232018;
+    --ink-soft:#6b6356;
+    --ink-faint:#9a9184;
+    --hair:#e8e1d4;
+    --hair-strong:#d9d0c1;
+    --primary:#9c5e2e;
+    --primary-hover:#7d4b24;
+    --primary-tint:#f5ebe3;
+    --accent:#7c6035;
+    --accent-hover:#654d2b;
+    --accent-tint:#f2ece2;
+    --on-primary:#ffffff;
+    --danger:#b34a3e;
+    --danger-tint:#f7e9e7;
+    --code:#5c4b3a;
+    --code-bg:#f2eee8;
+    --r:14px;
+    --r-sm:10px;
+    --ease:cubic-bezier(.22,.7,.2,1);
+    --spring:cubic-bezier(.34,1.4,.5,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    padding:56px 22px 140px;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.55;
+  }
+
+  /* 极淡的暖色晕影，像纸张在光下的自然过渡 */
+  body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    background:
+      radial-gradient(ellipse 70% 45% at 15% 0%,rgba(156,94,46,.05),transparent 55%),
+      radial-gradient(ellipse 55% 40% at 85% 100%,rgba(124,96,53,.04),transparent 50%);
+    z-index:-1;
+  }
+
+  .settings-shell{max-width:720px;margin:0 auto}
+
+  @keyframes rise{
+    from{opacity:0;transform:translateY(14px)}
+    to{opacity:1;transform:none}
+  }
+  @keyframes fill{from{transform:scaleX(0)}to{transform:scaleX(var(--to,1))}}
+  @keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+  @keyframes ping{0%{transform:scale(.5);opacity:.55}100%{transform:scale(2.2);opacity:0}}
+
+  .reveal{animation:rise .55s var(--ease) both}
+  .reveal:nth-of-type(1){animation-delay:.04s}
+  .reveal:nth-of-type(2){animation-delay:.09s}
+  .reveal:nth-of-type(3){animation-delay:.14s}
+  .reveal:nth-of-type(4){animation-delay:.19s}
+  .reveal:nth-of-type(5){animation-delay:.24s}
+  .reveal:nth-of-type(6){animation-delay:.29s}
+  .reveal:nth-of-type(7){animation-delay:.34s}
+
+  header.page-head{position:relative;margin-bottom:42px;animation:rise .6s var(--ease) both}
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.03em;
+    color:var(--primary);
+    margin-bottom:14px;
+    background:var(--primary-tint);
+    padding:5px 11px;
+    border-radius:999px;
+    border:1px solid rgba(156,94,46,.12);
+  }
+  header.page-head h1{
+    font-size:32px;
+    font-weight:650;
+    letter-spacing:-.025em;
+    line-height:1.15;
+  }
+  header.page-head h1 em{
+    font-style:normal;
+    color:var(--primary);
+    position:relative;
+  }
+  header.page-head h1 em::after{
+    content:"";
+    position:absolute;
+    left:-2px;right:-2px;bottom:2px;
+    height:7px;
+    background:var(--accent-tint);
+    border-radius:2px;
+    z-index:-1;
+  }
+  header.page-head p{
+    max-width:58ch;
+    margin-top:12px;
+    font-size:14.5px;
+    line-height:1.7;
+    color:var(--ink-soft);
+  }
+
+  .settings-card{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--hair);
+    border-radius:var(--r);
+    padding:26px 28px;
+    margin-bottom:16px;
+    transition:border-color .25s var(--ease),transform .25s var(--ease),box-shadow .25s var(--ease);
+    box-shadow:0 1px 0 rgba(35,32,24,.03);
+  }
+  .settings-card:hover{
+    border-color:var(--hair-strong);
+    transform:translateY(-1px);
+    box-shadow:0 8px 24px rgba(35,32,24,.06);
+  }
+
+  .section-heading{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    margin-bottom:22px;
+  }
+  .section-heading>div{display:flex;align-items:baseline;gap:12px}
+  .step{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:11px;
+    font-weight:600;
+    color:var(--accent);
+    letter-spacing:.04em;
+    flex:none;
+    background:var(--accent-tint);
+    width:24px;height:24px;
+    display:grid;place-items:center;
+    border-radius:6px;
+  }
+  .section-heading h2{font-size:18px;font-weight:650;letter-spacing:-.01em}
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:12px;
+    font-weight:500;
+    color:var(--ink-faint);
+    border:1px solid var(--hair);
+    padding:4px 10px;
+    border-radius:999px;
+    white-space:nowrap;
+  }
+  .badge.success{color:var(--primary);border-color:var(--primary-tint);background:var(--primary-tint)}
+  .badge.accent{color:var(--accent);border-color:var(--accent-tint);background:var(--accent-tint)}
+  .optional{font-size:12px;color:var(--ink-faint);font-style:italic}
+  .disclaimer{
+    font-size:12.5px;
+    line-height:1.65;
+    color:var(--ink-soft);
+    background:var(--surface-tint);
+    border:1px dashed var(--hair-strong);
+    border-radius:var(--r-sm);
+    padding:12px 14px;
+    margin-bottom:22px;
+  }
+
+  .preset-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+  .preset{
+    font:inherit;
+    font-size:13px;
+    font-weight:500;
+    color:var(--ink-soft);
+    background:transparent;
+    border:1px solid var(--hair-strong);
+    border-radius:999px;
+    padding:7px 15px;
+    cursor:pointer;
+    transition:color .2s,border-color .2s,background .2s,transform .15s var(--spring);
+  }
+  .preset:hover{color:var(--ink);border-color:var(--ink-faint);transform:translateY(-1px)}
+  .preset.active{
+    color:var(--primary);
+    border-color:var(--primary);
+    background:var(--primary-tint);
+  }
+
+  .field-grid{display:grid;gap:18px}
+  label.field{display:block}
+  label.field>span,.field-label{
+    display:block;
+    font-size:12px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+  }
+  input[type="text"],input[type="url"],input[type="password"],input[type="number"],select,textarea{
+    width:100%;
+    font:inherit;
+    font-size:14px;
+    color:var(--ink);
+    background:var(--surface);
+    border:1px solid var(--hair-strong);
+    border-radius:var(--r-sm);
+    padding:10px 13px;
+    transition:border-color .2s,box-shadow .2s var(--ease),background .2s;
+  }
+  textarea{min-height:96px;resize:vertical;line-height:1.65;font-family:inherit}
+  input:hover,textarea:hover,select:hover{border-color:var(--ink-faint);background:var(--surface-tint)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-tint)}
+  select{
+    appearance:none;
+    cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%239a9184' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 13px center;
+  }
+  label.field small{display:block;margin-top:7px;font-size:12px;color:var(--ink-faint)}
+  code{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:12px;
+    color:var(--code);
+    background:var(--code-bg);
+    padding:2px 6px;
+    border-radius:5px;
+  }
+
+  .model-tag-input{
+    display:flex;
+    flex-wrap:wrap;
+    gap:7px;
+    align-items:center;
+    border:1px solid var(--hair-strong);
+    border-radius:var(--r-sm);
+    padding:8px;
+    transition:border-color .2s,box-shadow .2s var(--ease);
+    background:var(--surface);
+  }
+  .model-tag-input:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-tint)}
+  .model-tag{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-size:13px;
+    color:var(--ink-soft);
+    border:1px solid var(--hair-strong);
+    border-radius:999px;
+    padding:4px 5px 4px 12px;
+    animation:rise .3s var(--spring) both;
+    transition:border-color .2s,background .2s;
+    background:var(--surface-tint);
+  }
+  .model-tag.active{
+    color:var(--primary);
+    border-color:var(--primary);
+    background:var(--primary-tint);
+  }
+  .model-tag small{
+    font-size:11px;
+    color:var(--accent);
+    font-weight:500;
+    background:var(--accent-tint);
+    padding:1px 6px;
+    border-radius:999px;
+  }
+  .model-tag .rm{
+    width:18px;height:18px;
+    display:grid;place-items:center;
+    border:none;background:none;
+    color:inherit;cursor:pointer;
+    border-radius:50%;
+    opacity:.55;
+    transition:opacity .2s,transform .2s var(--spring),background .2s;
+  }
+  .model-tag .rm:hover{opacity:1;transform:rotate(90deg);background:var(--hair)}
+  .model-tag-input input{
+    flex:1;
+    min-width:130px;
+    border:none;
+    padding:5px;
+    box-shadow:none!important;
+    background:transparent;
+  }
+
+  .persistence-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .radio-card{
+    display:flex;
+    align-items:flex-start;
+    gap:11px;
+    text-align:left;
+    font:inherit;
+    background:transparent;
+    border:1px solid var(--hair-strong);
+    border-radius:var(--r-sm);
+    padding:15px;
+    cursor:pointer;
+    transition:border-color .25s,background .25s,transform .15s var(--spring);
+  }
+  .radio-card:hover{border-color:var(--ink-faint);transform:translateY(-1px)}
+  .radio-card[aria-checked="true"]{border-color:var(--primary);background:var(--primary-tint)}
+  .choice-icon{color:var(--ink-faint);flex:none;margin-top:1px;transition:color .25s}
+  .radio-card[aria-checked="true"] .choice-icon{color:var(--primary)}
+  .radio-copy strong{display:block;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .radio-copy small{display:block;margin-top:4px;font-size:12px;color:var(--ink-soft);line-height:1.5}
+  .radio-control{
+    margin-left:auto;
+    width:16px;height:16px;
+    flex:none;
+    border:1.5px solid var(--hair-strong);
+    border-radius:50%;
+    display:grid;place-items:center;
+    transition:border-color .25s;
+  }
+  .radio-card[aria-checked="true"] .radio-control{border-color:var(--primary)}
+  .radio-control::after{
+    content:"";
+    width:8px;height:8px;
+    border-radius:50%;
+    background:var(--primary);
+    transform:scale(0);
+    transition:transform .3s var(--spring);
+  }
+  .radio-card[aria-checked="true"] .radio-control::after{transform:scale(1)}
+
+  fieldset{border:none;margin-bottom:22px}
+  legend{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:11px}
+  .select-field{display:block;margin-bottom:18px}
+  .select-field>span{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:8px}
+
+  .color-picker{
+    border:1px solid var(--hair-strong);
+    border-radius:var(--r-sm);
+    overflow:hidden;
+    transition:border-color .2s;
+    background:var(--surface);
+  }
+  .color-picker[open]{border-color:var(--primary)}
+  .color-picker summary{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:12px 14px;
+    cursor:pointer;
+    list-style:none;
+  }
+  .color-picker summary::-webkit-details-marker{display:none}
+  .color-swatch{
+    width:26px;height:26px;
+    border-radius:8px;
+    border:1px solid var(--hair-strong);
+    flex:none;
+    background:var(--primary);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);
+  }
+  .color-picker summary strong{display:block;font-size:13.5px;font-weight:600}
+  .color-picker summary small{display:block;font-size:12px;color:var(--ink-faint);font-family:ui-monospace,monospace;margin-top:2px}
+  .color-picker summary .chev{margin-left:auto;color:var(--ink-faint);transition:transform .3s var(--ease)}
+  .color-picker[open] summary .chev{transform:rotate(180deg)}
+  .color-picker-panel{padding:0 14px 14px;display:grid;gap:12px;animation:rise .3s var(--ease)}
+
+  .toggle-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:16px;
+    font-size:14px;
+    cursor:pointer;
+    user-select:none;
+    font-weight:500;
+  }
+  .switch{
+    width:40px;height:22px;
+    flex:none;
+    border-radius:999px;
+    background:var(--hair-strong);
+    position:relative;
+    transition:background .3s var(--ease);
+  }
+  .switch.on{background:var(--primary)}
+  .switch::after{
+    content:"";
+    position:absolute;
+    top:2.5px;left:2.5px;
+    width:17px;height:17px;
+    border-radius:50%;
+    background:var(--surface);
+    box-shadow:0 1px 2px rgba(0,0,0,.16);
+    transition:transform .35s var(--spring);
+  }
+  .switch.on::after{transform:translateX(18px)}
+
+  .cost-grid{display:grid;grid-template-columns:.8fr 1fr 1fr;gap:14px;margin-bottom:12px}
+  .budget-section{
+    margin-top:22px;
+    padding-top:22px;
+    border-top:1px solid var(--hair);
+    display:grid;
+    gap:16px;
+  }
+  .usage-total-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    margin-bottom:22px;
+    border:1px solid var(--hair);
+    border-radius:var(--r-sm);
+    overflow:hidden;
+    background:var(--surface);
+  }
+  .usage-total-grid>div{padding:15px 17px;border-right:1px solid var(--hair)}
+  .usage-total-grid>div:last-child{border-right:none}
+  .usage-total-grid span{font-size:12px;color:var(--ink-faint)}
+  .usage-total-grid strong{
+    display:block;
+    margin-top:6px;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:21px;
+    font-weight:600;
+    letter-spacing:-.01em;
+    font-variant-numeric:tabular-nums;
+    color:var(--ink);
+  }
+  .usage-total-grid .accent{color:var(--accent)}
+
+  .chart{
+    height:150px;
+    display:flex;
+    align-items:flex-end;
+    gap:10px;
+    padding:8px 2px;
+    border-bottom:1px solid var(--hair);
+    margin-bottom:16px;
+  }
+  .chart .col{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    gap:2px;
+    height:100%;
+    transform-origin:bottom;
+    animation:grow .65s var(--ease) both;
+    cursor:pointer;
+  }
+  .chart .col .stack{
+    width:6px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;
+    height:100%;
+    transition:opacity .2s;
+  }
+  .chart:hover .col .stack{opacity:.45}
+  .chart .col:hover .stack{opacity:1}
+  .chart .col i{display:block;border-radius:3px;width:6px}
+  .chart .col .in{background:var(--accent);opacity:.7;border-radius:0 0 3px 3px}
+  .chart .col .out{background:var(--primary);border-radius:3px 3px 0 0}
+  .model-filter-list{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px}
+  .model-filter{
+    font:inherit;
+    font-size:12.5px;
+    color:var(--ink-soft);
+    background:transparent;
+    border:1px solid var(--hair-strong);
+    border-radius:999px;
+    padding:5px 13px;
+    cursor:pointer;
+    transition:all .2s;
+  }
+  .model-filter:hover{border-color:var(--ink-faint)}
+  .model-filter.active{color:var(--primary);border-color:var(--primary);background:var(--primary-tint)}
+  .legend-row{display:flex;gap:16px;margin-bottom:8px;font-size:12px;color:var(--ink-soft)}
+  .legend-row i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+  .pricing-reference{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-top:16px;
+    padding:14px 0 0;
+    border-top:1px solid var(--hair);
+  }
+  .pricing-reference strong{font-size:13px;font-weight:600;display:block}
+  .pricing-reference span{font-size:12px;color:var(--ink-faint)}
+  .pricing-reference a{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-size:12.5px;
+    font-weight:500;
+    color:var(--primary);
+    text-decoration:none;
+    white-space:nowrap;
+    transition:color .2s;
+  }
+  .pricing-reference a svg{transition:transform .3s var(--spring)}
+  .pricing-reference a:hover{color:var(--primary-hover)}
+  .pricing-reference a:hover svg{transform:translate(2px,-2px)}
+
+  .cache-summary{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px 20px;
+    align-items:center;
+  }
+  .cache-summary>div span{font-size:12px;color:var(--ink-faint)}
+  .cache-summary>div strong{
+    display:block;
+    margin-top:5px;
+    font-size:15px;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-weight:600;
+  }
+  .bar{height:5px;border-radius:999px;background:var(--surface-tint);overflow:hidden}
+  .bar>i{
+    display:block;
+    height:100%;
+    border-radius:999px;
+    background:linear-gradient(90deg,var(--primary),var(--accent));
+    transform-origin:left;
+    animation:fill 1s var(--ease) .3s both;
+  }
+  .cache-summary .bar,.today-summary .bar{grid-column:1/-1}
+  .cache-summary small{grid-column:1/-1;font-size:12px;color:var(--ink-faint);line-height:1.55}
+
+  .diagnostic-controls{display:grid;grid-template-columns:1fr 1.2fr;gap:18px;align-items:start;margin-bottom:18px}
+  .consent-check{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .consent-check input{
+    width:16px;
+    height:16px;
+    margin-top:2px;
+    accent-color:var(--primary);
+    flex:none;
+    cursor:pointer;
+  }
+  .consent-check strong{display:block;font-weight:600}
+  .consent-check small{display:block;font-size:12px;color:var(--ink-soft);margin-top:3px;line-height:1.5}
+  .diagnostic-preview{
+    margin-top:16px;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:12px;
+    line-height:1.75;
+    background:var(--surface-tint);
+    border:1px solid var(--hair);
+    border-radius:var(--r-sm);
+    padding:14px 16px;
+    color:var(--ink-soft);
+    white-space:pre-wrap;
+    overflow-x:auto;
+  }
+  .diagnostic-preview .k{color:var(--accent)}
+  .diagnostic-preview .s{color:var(--primary)}
+
+  .card-actions{display:flex;align-items:center;gap:10px;margin-top:22px}
+  .danger-text-button{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    margin-left:auto;
+    font:inherit;
+    font-size:13px;
+    font-weight:500;
+    color:var(--danger);
+    background:none;
+    border:1px solid transparent;
+    border-radius:8px;
+    padding:8px 12px;
+    cursor:pointer;
+    transition:background .2s,border-color .2s;
+  }
+  .danger-text-button:hover{background:var(--danger-tint);border-color:rgba(179,74,62,.25)}
+
+  .secondary-button,.primary-button{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font:inherit;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    border-radius:var(--r-sm);
+    padding:10px 17px;
+    transition:transform .16s var(--spring),background .2s,border-color .2s,color .2s,box-shadow .2s;
+  }
+  .secondary-button{
+    color:var(--ink);
+    background:transparent;
+    border:1px solid var(--hair-strong);
+  }
+  .secondary-button:hover{border-color:var(--primary);color:var(--primary)}
+  .secondary-button:active{transform:scale(.98)}
+  .primary-button{
+    color:var(--on-primary);
+    background:var(--primary);
+    border:1px solid var(--primary);
+    box-shadow:0 1px 2px rgba(156,94,46,.2);
+  }
+  .primary-button:hover{background:var(--primary-hover);border-color:var(--primary-hover);box-shadow:0 4px 14px rgba(156,94,46,.28)}
+  .primary-button:active{transform:scale(.98)}
+
+  .action-bar{
+    position:sticky;
+    bottom:22px;
+    margin-top:28px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:rgba(255,255,255,.88);
+    backdrop-filter:blur(12px);
+    border:1px solid var(--hair-strong);
+    border-radius:var(--r);
+    padding:14px 18px;
+    box-shadow:0 10px 34px rgba(35,32,24,.1);
+    animation:rise .55s var(--ease) .35s both;
+  }
+  .action-bar p{
+    margin-right:auto;
+    font-size:13px;
+    color:var(--ink-soft);
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+  }
+  .action-bar .ready-dot{
+    width:6px;
+    height:6px;
+    border-radius:50%;
+    background:var(--primary);
+    position:relative;
+    flex:none;
+  }
+  .action-bar .ready-dot::after{
+    content:"";
+    position:absolute;
+    inset:-3px;
+    border-radius:50%;
+    border:1px solid var(--primary);
+    animation:ping 2.4s var(--ease) infinite;
+  }
+
+  .ico{stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+  @media (max-width:560px){
+    body{padding:32px 16px 120px}
+    .settings-card{padding:20px}
+    .persistence-options{grid-template-columns:1fr}
+    .cost-grid{grid-template-columns:1fr}
+    .usage-total-grid{grid-template-columns:1fr}
+    .usage-total-grid>div{border-right:none;border-bottom:1px solid var(--hair)}
+    .usage-total-grid>div:last-child{border-bottom:none}
+    .diagnostic-controls{grid-template-columns:1fr}
+    .action-bar{flex-wrap:wrap}
+    .action-bar p{width:100%;margin-bottom:6px}
+    .action-bar .secondary-button,.action-bar .primary-button{flex:1}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::after{animation:none!important;transition-duration:.01ms!important}
+  }
+</style>
+</head>
+<body>
+  <main class="settings-shell">
+    <header class="page-head">
+      <div class="eyebrow">
+        <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+        本地优先 · 用户自带模型
+      </div>
+      <h1>连接你的<em>翻译模型</em></h1>
+      <p>网页文本会从浏览器直接发送给你选择的模型服务商，不经过本项目的服务器。密钥、用量与缓存全部留在本机。</p>
+    </header>
+
+    <section class="settings-card reveal">
+      <div class="section-heading">
+        <div><span class="step">01</span><h2>模型服务</h2></div>
+        <span class="badge success">
+          <svg viewBox="0 0 24 24" class="ico" style="width:12px;height:12px"><polyline points="20 6 9 17 4 12"/></svg>
+          已保存密钥
+        </span>
+      </div>
+      <div class="preset-row">
+        <button class="preset active">DeepSeek</button>
+        <button class="preset">阿里云百炼 (Qwen)</button>
+        <button class="preset">OpenAI 兼容</button>
+        <button class="preset">自定义</button>
+      </div>
+      <div class="field-grid">
+        <label class="field">
+          <span>API Base URL</span>
+          <input type="url" value="https://api.deepseek.com/v1" spellcheck="false" />
+          <small>插件会自动追加 <code>/chat/completions</code></small>
+        </label>
+        <label class="field">
+          <span>API Key</span>
+          <input type="password" placeholder="已保存；留空表示不修改" />
+        </label>
+        <div class="field">
+          <span class="field-label">可用模型</span>
+          <div class="model-tag-input">
+            <span class="model-tag active">
+              <svg viewBox="0 0 24 24" class="ico" style="width:12px;height:12px"><polyline points="20 6 9 17 4 12"/></svg>
+              deepseek-chat <small>当前</small>
+              <button class="rm"><svg viewBox="0 0 24 24" class="ico" style="width:12px;height:12px"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </span>
+            <span class="model-tag">
+              deepseek-reasoner
+              <button class="rm"><svg viewBox="0 0 24 24" class="ico" style="width:12px;height:12px"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </span>
+            <input placeholder="输入后按回车添加" />
+          </div>
+          <small style="display:block;margin-top:7px">回车或逗号生成标签；点击标签切换当前模型，Popup 中也可切换。</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-card reveal">
+      <div class="section-heading">
+        <div><span class="step">02</span><h2>密钥与默认偏好</h2></div>
+      </div>
+      <fieldset>
+        <legend>API Key 保存方式</legend>
+        <div class="persistence-options">
+          <button class="radio-card" aria-checked="true">
+            <span class="choice-icon"><svg viewBox="0 0 24 24" class="ico" style="width:18px;height:18px"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <span class="radio-copy"><strong>仅本次浏览器会话</strong><small>推荐。关闭浏览器后自动清除，需要下次重新输入。</small></span>
+            <span class="radio-control"></span>
+          </button>
+          <button class="radio-card" aria-checked="false">
+            <span class="choice-icon"><svg viewBox="0 0 24 24" class="ico" style="width:18px;height:18px"><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 18h.01M10 18h.01"/><path d="M2 14 5 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1l3 10"/></svg></span>
+            <span class="radio-copy"><strong>持久保存在本机</strong><small>使用更方便，但浏览器扩展本地存储并不是加密保险箱。</small></span>
+            <span class="radio-control"></span>
+          </button>
+        </div>
+      </fieldset>
+      <label class="select-field"><span>默认目标语言</span>
+        <select><option>简体中文</option><option>English</option></select>
+      </label>
+      <label class="select-field"><span>默认显示方式</span>
+        <select><option>显示原文与译文</option><option>只显示原文</option><option>只显示译文</option></select>
+      </label>
+      <details class="color-picker">
+        <summary>
+          <span class="color-swatch"></span>
+          <span><strong>译文文字颜色</strong><small>#9c5e2e</small></span>
+          <svg viewBox="0 0 24 24" class="ico chev" style="width:15px;height:15px"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div class="color-picker-panel">
+          <label class="field"><span>RGBA 或 # 十六进制</span><input type="text" value="#9c5e2e" spellcheck="false" /></label>
+        </div>
+      </details>
+    </section>
+
+    <section class="settings-card reveal">
+      <div class="section-heading">
+        <div><span class="step">03</span><h2>高级翻译指令</h2></div>
+        <span class="optional">可选</span>
+      </div>
+      <textarea placeholder="留空时使用内置的安全翻译提示词。后续可在这里加入术语、文风或行业要求。"></textarea>
+    </section>
+
+    <section class="settings-card reveal">
+      <div class="section-heading">
+        <div><span class="step">04</span><h2>Token 用量</h2></div>
+        <span class="badge">最近 60 天</span>
+      </div>
+      <p class="disclaimer">只统计 Provider 响应返回的实际输入、输出 token；记录保存在本机并滚动保留最近 60 天，不读取或替代厂商账单。</p>
+      <div class="usage-total-grid">
+        <div><span>输入 token</span><strong>412,300</strong></div>
+        <div><span>输出 token</span><strong class="accent">168,940</strong></div>
+        <div><span>总计 token</span><strong>581,240</strong></div>
+      </div>
+      <div class="model-filter-list">
+        <button class="model-filter active">deepseek-chat</button>
+        <button class="model-filter">qwen-plus</button>
+      </div>
+      <div class="legend-row">
+        <span><i style="background:var(--primary)"></i>输出</span>
+        <span><i style="background:var(--accent);opacity:.7"></i>输入</span>
+      </div>
+      <div class="chart" aria-hidden="true" id="chart"></div>
+      <div class="pricing-reference">
+        <div><strong>DeepSeek 官方模型价格</strong><span>输入 USD 0.14 · 输出 USD 0.28 / 百万 token · 查询于 2026-08-18</span></div>
+        <a href="#">核对来源 <svg viewBox="0 0 24 24" class="ico" style="width:13px;height:13px"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>
+      </div>
+      <div class="card-actions">
+        <button class="danger-text-button">
+          <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+          清空本地用量
+        </button>
+      </div>
+    </section>
+
+    <section class="settings-card reveal">
+      <div class="section-heading">
+        <div><span class="step">05</span><h2>费用提醒设置</h2></div>
+        <span class="badge accent">可选</span>
+      </div>
+      <p class="disclaimer">手动价格只用于翻译前预估与本地预算提醒，不会作为账单金额展示；最终费用以厂商账单为准。</p>
+      <div class="toggle-row"><span class="switch on"></span>为当前模型启用费用预估</div>
+      <div class="cost-grid">
+        <label class="field"><span>币种</span>
+          <select><option>USD</option><option>CNY</option></select>
+        </label>
+        <label class="field"><span>每百万输入 token</span><input type="number" value="0.14" /></label>
+        <label class="field"><span>每百万输出 token</span><input type="number" value="0.28" /></label>
+      </div>
+      <div class="budget-section">
+        <div class="toggle-row" style="margin:0"><span class="switch on"></span>启用每日预算提醒</div>
+        <label class="field"><span>每日预算（USD）</span><input type="number" value="2.00" /></label>
+        <div class="today-summary">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px">
+            <span style="font-size:12px;color:var(--ink-faint)">今日预算进度</span>
+            <strong style="font-family:ui-monospace,monospace;font-size:18px;font-weight:600">42%</strong>
+          </div>
+          <div class="bar"><i style="--to:.42"></i></div>
+          <small style="display:block;margin-top:9px;font-size:12px;color:var(--ink-faint)">达到 100% 仅提醒，由你决定是否继续。</small>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="secondary-button" style="margin-left:auto">
+          <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+          保存费用提醒
+        </button>
+      </div>
+    </section>
+
+    <section class="settings-card reveal">
+      <div class="section-heading">
+        <div><span class="step">06</span><h2>本地翻译缓存</h2></div>
+        <span class="badge">
+          <svg viewBox="0 0 24 24" class="ico" style="width:12px;height:12px"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+          仅保存在本机
+        </span>
+      </div>
+      <p class="disclaimer">相同文本、语言、模型和提示词优先复用本地译文，减少重复等待和模型费用。缓存不包含 API Key 或网页 URL。</p>
+      <div class="cache-summary">
+        <div><span>缓存条目</span><strong>1,284</strong></div>
+        <div><span>本地占用</span><strong>3.4 MiB / 8.0 MiB</strong></div>
+        <div class="bar"><i style="--to:.43"></i></div>
+        <small>固定保留 30 天；达到容量上限后优先清理最久未使用的译文。</small>
+      </div>
+      <div class="card-actions">
+        <button class="danger-text-button">
+          <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+          清空翻译缓存
+        </button>
+      </div>
+    </section>
+
+    <section class="settings-card reveal">
+      <div class="section-heading">
+        <div><span class="step">07</span><h2>兼容性诊断</h2></div>
+        <span class="badge">默认仅本地</span>
+      </div>
+      <p class="disclaimer">诊断包只包含主机名、可选路径和翻译计数，不包含正文、URL 参数、API Key、截图或自动上传。请先在目标网页启动一次翻译，再回到这里生成。</p>
+      <div class="diagnostic-controls">
+        <label class="field"><span>问题类型</span>
+          <select><option>遗漏内容</option><option>译文不正确</option><option>重复翻译</option><option>页面布局</option><option>其他</option></select>
+        </label>
+        <label class="consent-check">
+          <input type="checkbox" />
+          <span><strong>包含当前页面路径</strong><small>路径可能识别具体文章；默认不包含。</small></span>
+        </label>
+      </div>
+      <div class="card-actions" style="margin-top:4px">
+        <button class="secondary-button">
+          <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+          生成本地预览
+        </button>
+        <button class="primary-button">
+          <svg viewBox="0 0 24 24" class="ico" style="width:14px;height:14px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+          下载诊断包
+        </button>
+      </div>
+      <pre class="diagnostic-preview">{
+  <span class="k">"host"</span>: <span class="s">"example.com"</span>,
+  <span class="k">"issue"</span>: { <span class="k">"type"</span>: <span class="s">"missed-content"</span> },
+  <span class="k">"counts"</span>: { <span class="k">"nodes"</span>: 214, <span class="k">"translated"</span>: 198, <span class="k">"skipped"</span>: 16 },
+  <span class="k">"model"</span>: <span class="s">"deepseek-chat"</span>,
+  <span class="k">"generatedAt"</span>: <span class="s">"2026-08-18"</span>
+}</pre>
+    </section>
+
+    <div class="action-bar reveal">
+      <p role="status"><span class="ready-dot" aria-hidden="true"></span>配置已保存于本机。</p>
+      <button class="secondary-button">
+        <svg viewBox="0 0 24 24" class="ico" style="width:15px;height:15px"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+        测试连接
+      </button>
+      <button class="primary-button">
+        <svg viewBox="0 0 24 24" class="ico" style="width:15px;height:15px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+        保存配置
+      </button>
+    </div>
+  </main>
+
+  <script>
+    document.querySelectorAll(".persistence-options .radio-card").forEach((el)=>el.addEventListener("click",()=>{el.parentElement.querySelectorAll(".radio-card").forEach(c=>c.setAttribute("aria-checked","false"));el.setAttribute("aria-checked","true");}));
+    document.querySelectorAll(".toggle-row").forEach((row)=>row.addEventListener("click",()=>row.querySelector(".switch")?.classList.toggle("on")));
+    const data=[[38,22],[46,34],[30,18],[52,44],[40,28],[60,52],[48,36],[72,60],[42,30],[56,46],[34,24],[64,54],[44,32],[58,48]];
+    const chart=document.getElementById("chart");
+    data.forEach(([inv,outv],i)=>{const col=document.createElement("div");col.className="col";col.style.animationDelay=(0.3+i*0.04)+"s";col.innerHTML=`<div class="stack"><i class="out" style="height:${outv}%"></i><i class="in" style="height:${inv}%"></i></div>`;chart.appendChild(col);});
+    document.querySelectorAll(".model-filter").forEach((b)=>b.addEventListener("click",()=>{document.querySelectorAll(".model-filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");}));
+    document.querySelectorAll(".preset").forEach((b)=>b.addEventListener("click",()=>{document.querySelectorAll(".preset").forEach(x=>x.classList.remove("active"));b.classList.add("active");}));
+  </script>
+</body>
+</html>

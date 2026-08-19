@@ -1,6 +1,6 @@
 import type { CostSettings, ProviderSettings } from './contracts';
 
-export const DEFAULT_TRANSLATION_COLOR = '#147d64';
+export const DEFAULT_TRANSLATION_COLOR = '#9c5e2e';
 
 export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   provider: 'openai-compatible',

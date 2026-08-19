@@ -4,6 +4,7 @@ import { extname, resolve } from 'node:path';
 
 const extensionDir = resolve('.output/chrome-mv3');
 const outputDir = resolve('.output');
+const packageManifest = JSON.parse(await readFile(resolve('package.json'), 'utf8'));
 const manifest = JSON.parse(await readFile(resolve(extensionDir, 'manifest.json'), 'utf8'));
 
 for (const fileName of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md']) {
@@ -46,13 +47,14 @@ for (const path of textFiles) {
   }
 }
 
-const archives = (await readdir(outputDir)).filter((name) =>
-  /^textduet-[0-9]+\.[0-9]+\.[0-9]+-chrome\.zip$/.test(name),
+const expectedArchive = `textduet-${packageManifest.version}-chrome.zip`;
+assert(
+  (await readdir(outputDir)).includes(expectedArchive),
+  `Chrome release ZIP was not created for package version ${packageManifest.version}`,
 );
-assert(archives.length > 0, 'Chrome release ZIP was not created');
 
 process.stdout.write(
-  `Release verification passed: ${textFiles.length} text assets, ${archives.at(-1)}\n`,
+  `Release verification passed: ${textFiles.length} text assets, ${expectedArchive}\n`,
 );
 
 async function walk(directory) {

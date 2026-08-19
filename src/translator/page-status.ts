@@ -19,7 +19,7 @@ export function injectPageStyles(): void {
     .${TRANSLATION_CLASS} {
       display: block !important;
       margin-top: 0.35em !important;
-      color: var(--textduet-translation-color, #147d64) !important;
+      color: var(--textduet-translation-color, #9c5e2e) !important;
       font: inherit !important;
       line-height: inherit !important;
     }
@@ -39,11 +39,11 @@ export function injectPageStyles(): void {
       z-index: 2147483647 !important;
       max-width: min(390px, calc(100vw - 36px)) !important;
       padding: 10px 13px !important;
-      border: 1px solid rgb(20 125 100 / 28%) !important;
+      border: 1px solid rgb(156 94 46 / 28%) !important;
       border-radius: 10px !important;
-      color: #17211e !important;
-      background: #f7faf8 !important;
-      box-shadow: 0 8px 28px rgb(23 33 30 / 16%) !important;
+      color: #232018 !important;
+      background: #faf8f3 !important;
+      box-shadow: 0 8px 28px rgb(35 32 24 / 16%) !important;
       font: 13px/1.45 ui-sans-serif, system-ui, sans-serif !important;
     }
     #${STATUS_ID}[data-textduet-state="error"] {
