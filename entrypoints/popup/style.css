@@ -1,6 +1,29 @@
 :root {
-  color: #232018;
-  background: #faf8f3;
+  /* TextDuet Design System v1.0 — see design-system/MASTER.md */
+  --td-bg: #FBF6E9;
+  --td-surface: #FFFFFF;
+  --td-surface-muted: #F4EFE3;
+  --td-border: #E8E2D5;
+  --td-border-strong: #C9C0A8;
+  --td-text: #2A1F12;
+  --td-text-muted: #6B6356;
+  --td-text-faint: #9A9182;
+  --td-primary: #9A4F1E;
+  --td-primary-hover: #7A3D14;
+  --td-primary-active: #5A2D0A;
+  --td-primary-soft: #F2DCC8;
+  --td-accent: #7C6035;
+  --td-accent-soft: #E8DCC4;
+  --td-success: #15803D;
+  --td-warning: #B45309;
+  --td-danger: #B91C1C;
+  --td-info: #1E40AF;
+  --td-focus-ring: rgba(160, 82, 45, 0.30);
+  --td-shadow-1: 0 1px 2px rgba(31, 27, 22, 0.05);
+  --td-shadow-2: 0 2px 8px rgba(31, 27, 22, 0.08);
+  --td-shadow-3: 0 8px 24px rgba(31, 27, 22, 0.10);
+  color: var(--td-text);
+  background: var(--td-bg);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-synthesis: none;
 }
@@ -12,6 +35,7 @@
 body {
   margin: 0;
   min-width: 340px;
+  background: var(--td-bg);
 }
 
 button,
