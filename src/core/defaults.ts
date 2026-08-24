@@ -5,6 +5,7 @@ export const DEFAULT_SOURCE_LANGUAGE = 'auto';
 export const DEFAULT_TARGET_LANGUAGE = 'system';
 // The in-page shortcut is opt-in because it adds a control to arbitrary pages.
 export const DEFAULT_SELECTION_QUICK_ACTION = false;
+export const DEFAULT_HEADER_POPUP_RESCAN = false;
 
 export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   provider: 'openai-compatible',
@@ -17,6 +18,11 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   targetLanguage: DEFAULT_TARGET_LANGUAGE,
   sourceLanguage: DEFAULT_SOURCE_LANGUAGE,
   selectionQuickAction: DEFAULT_SELECTION_QUICK_ACTION,
+  // Header popup rescan is opt-in: it re-scans on `pointerup` inside the
+  // header / [role="banner"] subtree after a short delay. Off by default
+  // because it can trigger an extra scan (and possibly an extra Provider
+  // request) for every user click in the site header.
+  headerPopupRescan: false,
   displayMode: 'bilingual',
   translationColor: DEFAULT_TRANSLATION_COLOR,
   customSystemPrompt: '',

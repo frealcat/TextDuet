@@ -360,6 +360,7 @@ async function startActiveTabTranslation(targetLanguage: string, sourceLanguage 
     displayMode: settings.displayMode,
     translationColor: settings.translationColor,
     selectionQuickAction: settings.selectionQuickAction === true,
+    headerPopupRescan: settings.headerPopupRescan === true,
     forceRefresh: previousState.hasRun,
   } satisfies RuntimeMessage);
   await browser.storage.session

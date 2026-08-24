@@ -6,6 +6,16 @@ TextDuet 的用户可见变化记录在此文件中。格式参考 [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- 0.1.1 起新增 Options 开关「页面顶部菜单的弹出内容也参与翻译」（默认关闭）；开启后在页面顶部菜单（GitHub / Stack Overflow 等头像菜单、站内搜索建议）点击后会自动触发一次局部重扫，把弹出内容加入翻译。
+- 0.1.1 起不同供应商的模型名称配置独立保存：切换 Provider 预设时不再残留上一个供应商的模型列表；老用户的现存 `model` / `models` 自动迁移到当前 baseUrl origin 桶。
+
+### Changed
+
+- 0.1.1 起默认 header / footer 候选选择器覆盖 WAI-ARIA 角色 `[role="banner"]` 与 `[role="contentinfo"]`，不写语义标签的 Gatsby / Next / 自定义 div shell 现在也能纳入 header / footer 翻译。
+- 0.1.1 起 `SiteRule` 新增可选字段 `headerExtras` / `footerExtras`，按 host 显式扩展站点特定选择器；默认保守行为不变。
+
 ## [0.1.0] - 2026-08-24
 
 首版 `0.1.0` 本地安装版。配套 Git tag 与 GitHub Release 由项目所有者按 `AGENT_DEV.md §5` 单独授权后创建；本仓库在此之前不得声明已"对外发布"。本版不进入 Chrome Web Store、其他商店或自动更新分发。

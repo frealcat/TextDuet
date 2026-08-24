@@ -64,6 +64,7 @@ interface TranslationRun {
   displayMode: TranslationDisplayMode;
   translationColor: string;
   selectionQuickAction: boolean;
+  headerPopupRescan: boolean;
   forceRefresh: boolean;
   observer: MutationObserver | null;
   scanTimer: number | undefined;
@@ -95,6 +96,7 @@ export default defineUnlistedScript(() => {
         parsedMessage.displayMode ?? 'bilingual',
         parsedMessage.translationColor ?? DEFAULT_TRANSLATION_COLOR,
         parsedMessage.selectionQuickAction === true,
+        parsedMessage.headerPopupRescan === true,
         parsedMessage.forceRefresh ?? true,
       );
       sendResponse({ ok: true, message: '已开始翻译当前网页' });
@@ -169,6 +171,7 @@ function startTranslationRun(
   displayMode: TranslationDisplayMode,
   translationColor: string,
   selectionQuickAction: boolean,
+  headerPopupRescan: boolean,
   forceRefresh: boolean,
 ): void {
   stopActiveRun();
@@ -184,6 +187,7 @@ function startTranslationRun(
     displayMode,
     translationColor,
     selectionQuickAction,
+    headerPopupRescan,
     forceRefresh,
     observer: null,
     scanTimer: undefined,
@@ -196,6 +200,7 @@ function startTranslationRun(
   };
   activeRun = run;
   installSelectionQuickAction(run);
+  if (headerPopupRescan) installHeaderPopupRescan(run);
   run.observer = observeDynamicContent(sourceTextByElement, () => {
     if (isActiveRun(run.id)) scheduleScan(run, DYNAMIC_CONTENT_SCAN_DELAY_MS);
   });
@@ -207,6 +212,7 @@ function stopActiveRun(): void {
   activeStreamPorts.forEach((port) => port.disconnect());
   activeStreamPorts.clear();
   removeSelectionQuickAction();
+  removeHeaderPopupRescan();
   if (!activeRun) return;
   lastRunSnapshot = {
     candidateCount: activeRun.seenIds.size,
@@ -502,7 +508,7 @@ async function translateSelection(text: string, sourceLanguage: string, targetLa
 function createSelectionRun(targetLanguage: string): TranslationRun {
   return {
     id: 0, sourceLanguage: 'auto', targetLanguage, displayMode: 'bilingual',
-    translationColor: DEFAULT_TRANSLATION_COLOR, selectionQuickAction: false, forceRefresh: false, observer: null,
+    translationColor: DEFAULT_TRANSLATION_COLOR, selectionQuickAction: false, headerPopupRescan: false, forceRefresh: false, observer: null,
     scanTimer: undefined, isProcessing: false, hasPendingScan: false,
     translatedIds: new Set(), failedIds: new Set(), seenIds: new Set(), failedBatchCount: 0,
   };
@@ -659,4 +665,45 @@ function normalizeSelectionError(error: unknown): string {
   if (/格式|json|段落/i.test(message)) return '模型返回格式无效';
   if (/余额|限流|不可用/i.test(message)) return message.slice(0, 80);
   return '选区翻译失败';
+}
+
+// ---- Header popup rescan ----
+//
+// Some sites (GitHub, Stack Overflow, etc.) render user-triggered
+// popovers as portals mounted on <body> rather than as descendants of
+// the site <header>. MutationObserver on document.documentElement does
+// catch the new nodes, but the listener fires after the popover
+// finishes opening, which can race with the existing debounced scan.
+//
+// When the user opts in via Options, we additionally listen for
+// `pointerup` on the page header / [role="banner"] subtree and schedule
+// a short-delay scan. This guarantees the popover content is in the
+// DOM by the time the scan runs, without firing for every click in
+// the document body.
+
+const HEADER_POPUP_RESCAN_DELAY_MS = 300;
+let headerPopupRescanCleanup: (() => void) | null = null;
+
+function installHeaderPopupRescan(run: TranslationRun): void {
+  removeHeaderPopupRescan();
+  const onPointerUp = (event: PointerEvent): void => {
+    if (!isActiveRun(run.id)) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    // Match both the semantic <header> and the ARIA banner landmark.
+    if (!target.closest('header, [role="banner"]')) return;
+    scheduleScan(run, HEADER_POPUP_RESCAN_DELAY_MS);
+  };
+  // capture so we run before the popover's own click handler installs it
+  document.addEventListener('pointerup', onPointerUp, true);
+  headerPopupRescanCleanup = () => {
+    document.removeEventListener('pointerup', onPointerUp, true);
+  };
+}
+
+function removeHeaderPopupRescan(): void {
+  if (headerPopupRescanCleanup) {
+    headerPopupRescanCleanup();
+    headerPopupRescanCleanup = null;
+  }
 }

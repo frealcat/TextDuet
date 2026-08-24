@@ -82,6 +82,7 @@ export function App() {
         models: normalizeModelList(settings.models, settings.model),
         translationColor: (settings.translationColor || DEFAULT_TRANSLATION_COLOR).trim(),
         selectionQuickAction: settings.selectionQuickAction === true,
+        headerPopupRescan: settings.headerPopupRescan === true,
       };
       const originPattern = toOriginPattern(settings.baseUrl);
       const granted = await browser.permissions.request({ origins: [originPattern] });
@@ -247,6 +248,19 @@ export function App() {
           />
           <span>选中文字后显示快捷翻译图标</span>
           <small>关闭后仍可通过右键菜单翻译选区。</small>
+        </label>
+
+        <label className="quick-action-toggle">
+          <input
+            type="checkbox"
+            checked={settings.headerPopupRescan === true}
+            onChange={(event) => update('headerPopupRescan', event.target.checked)}
+          />
+          <span>页面顶部菜单的弹出内容也参与翻译</span>
+          <small>
+            适用于 GitHub / Stack Overflow 这类点击头像后挂出的菜单。
+            开启后点击顶部菜单会触发一次额外重扫，关闭则只翻译主文档流。
+          </small>
         </label>
       </section>
 
