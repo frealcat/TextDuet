@@ -6,6 +6,15 @@ export interface SiteRule {
   excludedSelectors: readonly string[];
   includedSelectors?: readonly string[];
   blockSelectors?: readonly string[];
+  /**
+   * Site-specific extras for sites whose header / footer do not use the
+   * semantic tags or ARIA roles that the default selector matches.
+   * Strings are interpreted as CSS selectors; matched descendants are
+   * included in addition to the default `header` / `[role="banner"]` set.
+   * Stays empty by default to keep the default surface conservative.
+   */
+  headerExtras?: readonly string[];
+  footerExtras?: readonly string[];
 }
 
 /**

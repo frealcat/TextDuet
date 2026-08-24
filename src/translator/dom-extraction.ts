@@ -13,6 +13,13 @@ export const TRANSLATION_BLOCK_SELECTOR =
     'header a, header p, header li, header h1, header h2, header h3, header h4, header h5, header h6',
     'nav a, [role="navigation"] a',
     'footer a, footer p, footer li, footer h1, footer h2, footer h3, footer h4, footer h5, footer h6',
+    // Sites that do not use the semantic <header> / <footer> tags rely on
+    // ARIA landmarks. The WAI-ARIA spec maps role="banner" to <header> and
+    // role="contentinfo" to <footer>; sites that follow the spec still
+    // expose these roles regardless of the tag they pick. Adding the role
+    // selectors covers Gatsby / Next / custom shells that use <div role>.
+    '[role="banner"] a, [role="banner"] p, [role="banner"] li, [role="banner"] h1, [role="banner"] h2, [role="banner"] h3, [role="banner"] h4, [role="banner"] h5, [role="banner"] h6',
+    '[role="contentinfo"] a, [role="contentinfo"] p, [role="contentinfo"] li, [role="contentinfo"] h1, [role="contentinfo"] h2, [role="contentinfo"] h3, [role="contentinfo"] h4, [role="contentinfo"] h5, [role="contentinfo"] h6',
   ].join(', ');
 
 export const TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR = [
@@ -59,6 +66,35 @@ interface CollectTranslationCandidatesOptions {
   siteRule?: SiteRule | null;
 }
 
+/**
+ * Build the site-rule header / footer extra selector block. Each extra
+ * string is treated as a host selector (e.g. `.site-header`) and we append
+ * the same conservative descendant pattern that the default block
+ * selector uses for `<header>` / `<footer>`. Invalid or empty inputs are
+ * silently dropped so a bad site rule cannot break the whole extractor.
+ */
+function buildSiteRuleHeaderFooterExtras(rule: SiteRule | null | undefined): string {
+  if (!rule) return '';
+  const textChildren = [
+    'a', 'p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'span', 'div',
+  ];
+  const parts: string[] = [];
+  for (const extra of rule.headerExtras || []) {
+    if (typeof extra !== 'string' || !extra.trim()) continue;
+    for (const child of textChildren) {
+      parts.push(`${extra} ${child}`);
+    }
+  }
+  for (const extra of rule.footerExtras || []) {
+    if (typeof extra !== 'string' || !extra.trim()) continue;
+    for (const child of textChildren) {
+      parts.push(`${extra} ${child}`);
+    }
+  }
+  return parts.join(', ');
+}
+
 /** Collects the conservative reading-text subset shared by runtime and browser acceptance. */
 export function collectTranslationCandidates(
   document: Document,
@@ -69,10 +105,12 @@ export function collectTranslationCandidates(
     TRANSLATION_EXCLUDED_ANCESTOR_SELECTOR,
     ...(options.siteRule?.excludedSelectors || []),
   ].join(', ');
+  const headerFooterExtras = buildSiteRuleHeaderFooterExtras(options.siteRule);
   const blockSelector = [
     TRANSLATION_BLOCK_SELECTOR,
+    headerFooterExtras,
     ...(options.siteRule?.blockSelectors || []),
-  ].join(', ');
+  ].filter((selector) => selector.length > 0).join(', ');
   const elements = [
     ...new Set(
     [
