@@ -63,6 +63,7 @@ TextDuet 的用户可见变化记录在此文件中。格式参考 [Keep a Chang
 ### Fixed
 
 - 修复独立打开 Options 或 Popup 扩展标签页时可信来源识别失败，导致配置保存请求被错误拒绝的问题。
+- 修复翻译流式进行中页面进入 bfcache / 导航时 `port.postMessage` 抛错被降级为 `Unchecked runtime.lastError` 的噪音；Service Worker 端加入 `safeStreamPostMessage` 与端口断连分类，clean 关闭静默、bfcache/navigation 写入本地 `console.warn` 诊断。
 - 优化阿里云 Qwen3 兼容请求：翻译场景关闭思考模式，将默认批次收紧为 4000 字符，并将默认单请求超时调整为 60 秒，降低长文章翻译超时。
 - 修复虚拟列表复用节点在离线改写后再次插入时可能复用旧源文本的问题；Observer 改为监听文档根节点，并排除通用 breadcrumb、侧栏和搜索区域。
 - 修复动态页面仍有待扫描 DOM 时过早显示“已完成”，导致调用方可能把中间状态当作最终结果的问题。

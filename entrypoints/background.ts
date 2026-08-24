@@ -45,6 +45,66 @@ const requestControllersByTab = new Map<number, Set<AbortController>>();
 const LAST_TRANSLATED_TAB_ID_KEY = 'textduet:last-translated-tab-id';
 const LAST_WEB_TAB_ID_KEY = 'textduet:last-web-tab-id';
 
+// ---- Stream port disconnect handling ----
+//
+// When a tab moves into the back/forward cache (bfcache) or navigates away
+// mid-stream, Chrome closes the extension port. Subsequent postMessage calls
+// on the dead port throw "The page keeping the extension port is moved into
+// back/forward cache, so the message channel is closed." and surface as an
+// `Unchecked runtime.lastError` warning because nothing checks it.
+//
+// We track disconnected ports in a WeakSet so a single in-flight postMessage
+// does not spam the console, mark ports that completed cleanly so the
+// matching onDisconnect stays silent, and emit one local diagnostic line per
+// abnormal disconnect. The diagnostic is `console.warn` only, never written
+// to storage or uploaded, and contains no user content, key, or query.
+
+type StreamPortDisconnectReason = 'bfcache' | 'navigation' | 'clean';
+
+const disconnectedStreamPorts = new WeakSet<Browser.runtime.Port>();
+const completedStreamPorts = new WeakSet<Browser.runtime.Port>();
+
+function logStreamPortDisconnect(
+  port: Browser.runtime.Port,
+  reason: Exclude<StreamPortDisconnectReason, 'clean'>,
+  detail?: string,
+): void {
+  const payload: Record<string, string | number | null> = {
+    event: 'textduet.stream-port.disconnect',
+    portName: port.name,
+    tabId: port.sender?.tab?.id ?? null,
+    reason,
+    at: new Date().toISOString(),
+  };
+  if (detail) payload.detail = detail.slice(0, 120);
+  console.warn(`[textduet] ${JSON.stringify(payload)}`);
+}
+
+function safeStreamPostMessage(
+  port: Browser.runtime.Port,
+  message: Parameters<Browser.runtime.Port['postMessage']>[0],
+): boolean {
+  if (disconnectedStreamPorts.has(port)) return false;
+  try {
+    port.postMessage(message);
+    if (message && typeof message === 'object' && 'type' in message) {
+      const type = (message as { type?: unknown }).type;
+      if (type === 'TRANSLATION_COMPLETE') completedStreamPorts.add(port);
+    }
+    return true;
+  } catch (error) {
+    disconnectedStreamPorts.add(port);
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const reason: Exclude<StreamPortDisconnectReason, 'clean'> = /back\/forward cache/i.test(
+      rawMessage,
+    )
+      ? 'bfcache'
+      : 'navigation';
+    logStreamPortDisconnect(port, reason, rawMessage);
+    return false;
+  }
+}
+
 export default defineBackground(() => {
   void restrictStorageAccess();
   void registerSelectionMenu();
@@ -85,7 +145,7 @@ export default defineBackground(() => {
     port.onMessage.addListener((rawMessage) => {
       if (rawMessage?.type !== 'TRANSLATE_BATCH_STREAM') return;
       if (requestInFlight) {
-        port.postMessage({ type: 'TRANSLATION_ERROR', message: '已有翻译请求正在进行' });
+        safeStreamPostMessage(port, { type: 'TRANSLATION_ERROR', message: '已有翻译请求正在进行' });
         return;
       }
       requestInFlight = true;
@@ -94,18 +154,32 @@ export default defineBackground(() => {
           const parsed = parseRuntimeMessage(rawMessage);
           if (parsed.type !== 'TRANSLATE_BATCH_STREAM') throw new Error('流式请求格式无效');
           const response = await translateStreamWithCache(provider, parsed.request, controller.signal, (block) => {
-            port.postMessage({ type: 'TRANSLATION_BLOCK', block });
+            safeStreamPostMessage(port, { type: 'TRANSLATION_BLOCK', block });
           });
-          port.postMessage({ type: 'TRANSLATION_COMPLETE', response });
+          safeStreamPostMessage(port, { type: 'TRANSLATION_COMPLETE', response });
         } catch (error) {
-          port.postMessage({ type: 'TRANSLATION_ERROR', message: error instanceof Error ? error.message : '网页翻译失败' });
+          safeStreamPostMessage(port, {
+            type: 'TRANSLATION_ERROR',
+            message: error instanceof Error ? error.message : '网页翻译失败',
+          });
         } finally {
           requestInFlight = false;
           unregisterController(tabId, controller);
         }
       })();
     });
-    port.onDisconnect.addListener(() => controller.abort());
+    port.onDisconnect.addListener(() => {
+      controller.abort();
+      if (disconnectedStreamPorts.has(port)) return;
+      if (completedStreamPorts.has(port)) {
+        // Content script disconnected cleanly after a completed stream; no
+        // diagnostic needed and nothing to do.
+        disconnectedStreamPorts.add(port);
+        return;
+      }
+      disconnectedStreamPorts.add(port);
+      logStreamPortDisconnect(port, 'navigation');
+    });
   });
 });
 
