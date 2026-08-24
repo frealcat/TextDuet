@@ -42,6 +42,7 @@
 | TD-2026-019 | M2 无感接入、语言对、流式翻译与选区翻译 | 进行中 | M2 | 未发布 |
 | TD-2026-020 | M2 流式回显、页面壳层兼容与选区快捷入口稳定性 | 已验证 | M2 | 未发布 |
 | TD-2026-021 | V1.0 本地安装版收口 | 进行中 | V1.0 | 未发布 |
+| TD-2026-022 | 0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译 | 已规划 | V1.0.1 | 未发布 |
 
 > TD-2026-001 至 TD-2026-003 是 2026-08-17 根据当前未发布仓库状态建立的基线回溯，不代表历史上已有对应 Git commit、tag 或公开版本。
 
@@ -1037,6 +1038,83 @@
   2. header / footer 翻译识别仍有遗漏（当前候选只覆盖 `<header>` / `<footer>` 标签 + 直系 a/p/li/h1-h6，遗漏非语义 `class="header"` / `role="banner"` / 嵌套多层容器等）。
   3. header 内部 popup / 动态显示的 DOM 内容翻译触发需要新设计思路（占位 / IntersectionObserver / 逐元素 debounce 等方案待比较）。
 - 本轮 0.1.0 tag、push、GitHub Release 暂缓；待 0.1.1 修复上述 3 个问题后与 PRD §12 偏差补齐一起切到"已发布"。
+
+### TD-2026-022：0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译
+
+| 字段 | 内容 |
+| --- | --- |
+| 状态 | 已规划；子项 A/B/C/D 待与项目所有者确认实施顺序，本轮未开始 |
+| 开始日期 | 2026-08-24（立项） |
+| 所属阶段 | V1.0.1（V1.0 收口的下一修补版本） |
+| 目标 | 修复 TD-2026-021 项目所有者反馈的 3 个使用问题，并补齐 PRD §12 自定义端点真实连接偏差；为 0.1.0 切到"已发布"补齐前置条件 |
+
+子项 A — 模型配置按 baseUrl origin 独立：
+
+- 现状：`ProviderSettings.models[]` 与 `baseUrl` 不耦合；切 baseUrl 时旧模型列表残留；UI 显示跨供应商模型混杂。
+- 方案：把 `models` / `model` 升级为 `modelsByOrigin: Record<string, string[]>` + `activeModelByOrigin: Record<string, string>`，键用 `new URL(baseUrl).origin`；切 baseUrl 时自动切到对应桶；现存 `models` 一次性迁移到当前 baseUrl origin 桶。
+- 范围：修改 `src/core/contracts.ts`、`src/core/schemas.ts`（含数据迁移 schema）、`src/storage/settings.ts`、`entrypoints/options/App.tsx`、`entrypoints/popup/App.tsx`、`src/background/translation-service.ts` 读取 model 的位置。
+- 验证：20 个测试文件 / ≥135 项单元测试，typecheck 通过；新增数据迁移单测（无 modelsByOrigin 时回退到老 models 列表）；Options UI 在 5 个预设间切换时模型标签独立保留；切到自定义 URL 后再切回预设，模型列表仍保留。
+
+子项 B — header / footer / nav 候选选择器扩展 + site-rules 化：
+
+- 现状：`src/translator/dom-extraction.ts` 中候选选择器只覆盖 `<header> a/p/li/h1-h6` + `<footer>` 同级 + `nav a, [role="navigation"] a`；遗漏非语义 class/role、多层嵌套容器、`<aside>` 站点 shell、`.site-header` / `.navbar` / `[data-testid*="header"]` 等。
+- 方案：默认壳层选择器扩展到 `role="banner"`, `role="contentinfo"`, 常见 class 前缀；把"扩展 header/footer 选择器"做成 site-rules 里的可配置项；继续保留"按钮/代码/表单/隐藏区/侧栏"排除。
+- 范围：修改 `src/translator/dom-extraction.ts` 默认选择器表；`src/translator/site-rules.ts` 增加 `headerExtras: string[]` / `footerExtras: string[]` 字段；新增针对 header/footer 的单测。
+- 验证：扩展后对 16 个 P0 公开页面与 6 份原创语料重跑 Chrome 回归（已通过项不能回退）；新增 2-3 份 header/footer 重结构语料；Options 增加"扩展 header/footer 候选"开关时提示风险。
+
+子项 C — header 内 popup / 动态 DOM 翻译触发：
+
+- 现状：`MutationObserver` 监听 `document.documentElement` 已能捕到大多数 DOM 变化，但 header 内 popup（GitHub user menu / 站内搜索建议 / 各种 SaaS 账号菜单）以 portal 形式挂到 `<body>` 末尾、不在 header 子树；点击后才出现，触发出现在"点击"事件之后。
+- 方案：在 `header / [role="banner"]` 子树内监听 `pointerup` 事件，命中后短延迟（建议 250-500ms，可调）后对当前活动翻译会话触发一次局部重扫；MutationObserver 对被检测到的 popup 容器临时打开 5-10s 主动监听窗口；提供 Options 开关"包含 header 动态弹窗"，默认关闭。
+- 范围：修改 `entrypoints/translator.ts` 安装选择与重扫钩子；Options 增加对应开关与脱敏提示；新增针对 popup 触发的单测（用 Playwright 模拟点击）。
+- 验证：Chrome 安装态对 GitHub 头像菜单 / 站内搜索建议列表 / Stack Overflow 顶部用户菜单三类 popup 都能触翻译；性能：popup 内 50 节点重扫 < 80ms；开关关闭时行为与 0.1.0 一致。
+
+子项 D — PRD §12 自定义端点真实连接补齐：
+
+- 现状：PRD §12 第 1 条要求"OpenAI、DeepSeek 与至少 1 个自定义兼容端点"真实连接；本轮 DeepSeek 通过，OpenAI 跳过，缺 1 个自定义端点。
+- 方案：项目所有者在本机 Chrome 用 OpenRouter 或硅基流动任选其一完成真实连接、连接测试、翻译往返、主动查询余额（如适用）；Agent 不代验。
+- 范围：仅在 `docs/RELEASE-CHECKLIST.md` 增补"自定义端点真实连接"段；不写代码。
+- 验证：项目所有者在本机 Chrome 完成并附验收反馈；`0.1.0` 才能从"已验证"切到"已发布"。
+
+非范围（V1.0.1 不做）：
+
+- 不新增 Provider、权限、网络数据流；不动 `provider: 'openai-compatible'` 字面量；不动 `package.json` 主要依赖与版本号之外的字段。
+- 不替代项目所有者执行 Chrome 打包、加载、真实网页操作或自定义端点真实连接。
+- 不为 0.1.1 引入 Chrome Web Store、其他商店、自动更新、Anthropic / Gemini 原生 Provider、术语表、划词增强等 V1.x/V2 候选。
+- 不回退 M2 既有壳层选择器、站点规则、诊断包、显示模式、译文颜色、bfcache 端口保护等已验证项。
+
+关键决策（待项目所有者确认）：
+
+- 子项实施顺序：默认推荐 **D → A → B → C**（D 解除 §12 阻塞；A 修复最常用的配置体验；B/C 属于翻译召回增强）。
+- A 方案键用 `new URL(baseUrl).origin`（不是 baseUrl 全串），避免路径差异（如 `/v1` 与 `/compatible-mode/v1`）导致不命中。
+- B 方案默认壳层只加 `role="banner" / "contentinfo" + .site-header / .site-footer / .navbar` 5 个常见类前缀；`[data-testid*="header"]` 类放在 site-rules 显式白名单。
+- C 方案默认关闭"包含 header 动态弹窗"开关；用户主动开启后才激活 pointerup + 短窗口 MutationObserver；性能预算 < 100ms/popup。
+
+权限、隐私与成本影响：
+
+- A 涉及 schema 变更与数据迁移，但不动 API Key 存储语义、不动 Provider 协议、不动缓存键。
+- B 仅扩展默认壳层选择器，不动 Manifest 权限、不发新请求、不改变交互控件/代码/表单/隐藏区排除规则。
+- C 新增"包含 header 动态弹窗"开关；开启后点击 header 内可点击元素会触发局部重扫，可能向 Provider 多发一次请求；不开启时零成本。
+- D 仅文档与项目所有者人工操作，零代码改动。
+
+验证证据（提交时附）：
+
+- A 完成后：单测 ≥135 项；数据迁移单测；Options 切换 5 个预设 + 自定义 URL 后模型独立。
+- B 完成后：Chrome 回归脚本重跑 16 个 P0 公开页面与 6 份原创语料；新增 header/footer 重结构语料 ≥3 份；既有 6 份不回归。
+- C 完成后：Playwright 模拟点击 GitHub 头像菜单 / 站内搜索建议 / Stack Overflow 顶部用户菜单三类 popup；popup 内 50 节点重扫 < 80ms；开关关闭行为与 0.1.0 等价。
+- D 完成后：项目所有者在本机 Chrome 附"自定义端点真实连接"验收反馈。
+
+关联文档：
+
+- `docs/PRD.zh-CN.md` §12、`docs/PRODUCT-ROADMAP.md` §8 V1.0 退出条件、`docs/RELEASE-CHECKLIST.md`、`docs/CHROME-PERMISSIONS.md`、`docs/PRIVACY.md`、`CHANGELOG.md`、`docs/ITERATION-LOG.md` TD-2026-021。
+- 新增子项须在各自 commit 消息中标注 `TD-2026-022-A / B / C / D`，便于审计。
+
+遗留与下一步：
+
+- 子项 D 必须由项目所有者完成；Agent 不代验。
+- 0.1.0 tag / push / GitHub Release 在 D 完成后且 A/B/C 中至少 A 完成时再触发；按 `AGENT_DEV.md §5` 需项目所有者单独授权。
+- 若子项 C 在 header 翻译召回上暴露出 P0（例如 popup portal 完全游离于 header 子树），评估是否在 0.1.1 中拆出 C' 或延期到 V1.2。
+- 本轮不启动 V1.x/V2 候选池（快捷键 / Anthropic / Gemini / 术语表 / 划词增强等）按 `PRODUCT-ROADMAP.md §2` 推迟。
 
 ## 4. 新迭代模板
 
