@@ -51,8 +51,18 @@ describe('translation colors', () => {
     expect(resolveReadableTranslationColor(context, 'preferred')).toBe('rgb(23, 33, 30)');
   });
 
-  it('honors the model source choice when both candidates are readable', () => {
-    const context = createTranslationStyleContext('#111111', '#143d2f', '#ffffff', 4.5);
-    expect(resolveReadableTranslationColor(context, 'source')).toBe('#111111');
+ it('honors the model source choice when both candidates are readable', () => {
+   const context = createTranslationStyleContext('#111111', '#143d2f', '#ffffff', 4.5);
+   expect(resolveReadableTranslationColor(context, 'source')).toBe('#111111');
+ });
+
+  it('keeps the readable configured color deterministic when no model preference is used', () => {
+    const context = createTranslationStyleContext('#111111', '#ff0000', '#ffffff', 4.5);
+    expect(resolveReadableTranslationColor(context, 'preferred')).toBe('#111111');
+  });
+
+  it('keeps a user-selected red color when it meets the readability threshold', () => {
+    const context = createTranslationStyleContext('#444444', '#ef3d32', '#ffffff', 3);
+    expect(resolveReadableTranslationColor(context, 'preferred')).toBe('#ef3d32');
   });
 });

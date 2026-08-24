@@ -6,7 +6,14 @@ import {
 import { getRuleRootElements, type SiteRule } from './site-rules';
 
 export const TRANSLATION_BLOCK_SELECTOR =
-  'h1, h2, h3, h4, h5, h6, p, li, blockquote, td, figcaption';
+  [
+    'h1, h2, h3, h4, h5, h6, p, li, blockquote, td, figcaption',
+    // Navigation and shell copy is useful reading content too. Keep the
+    // selector narrow so controls are still excluded by the ancestor rules.
+    'header a, header p, header li, header h1, header h2, header h3, header h4, header h5, header h6',
+    'nav a, [role="navigation"] a',
+    'footer a, footer p, footer li, footer h1, footer h2, footer h3, footer h4, footer h5, footer h6',
+  ].join(', ');
 
 export const TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR = [
   'script',
@@ -28,10 +35,7 @@ export const TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR = [
 ].join(', ');
 
 export const TRANSLATION_NAVIGATION_EXCLUDED_ANCESTOR_SELECTOR = [
-  'nav',
-  'footer',
   'menu',
-  '[role="navigation"]',
   '[role="menu"]',
   '[role="complementary"]',
   'aside',
@@ -71,7 +75,10 @@ export function collectTranslationCandidates(
   ].join(', ');
   const elements = [
     ...new Set(
-    getRuleRootElements(document, options.siteRule ?? null).flatMap((root) => [
+    [
+      ...getRuleRootElements(document, options.siteRule ?? null),
+      document.documentElement,
+    ].flatMap((root) => [
         ...(root.matches(blockSelector) ? [root] : []),
         ...root.querySelectorAll<HTMLElement>(blockSelector),
       ]),

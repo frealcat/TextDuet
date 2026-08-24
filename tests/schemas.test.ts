@@ -60,6 +60,16 @@ describe('runtime schemas', () => {
       .toMatchObject({ model: 'example-fast' });
   });
 
+  it('accepts language preferences and streaming messages', () => {
+    expect(parseRuntimeMessage({
+      type: 'SET_LANGUAGE_PREFERENCES', sourceLanguage: 'auto', targetLanguage: 'system',
+    })).toMatchObject({ targetLanguage: 'system' });
+    expect(parseRuntimeMessage({
+      type: 'TRANSLATE_BATCH_STREAM',
+      request: { sourceLanguage: 'auto', targetLanguage: 'en', blocks: [{ id: 'one', text: 'One' }] },
+    })).toMatchObject({ type: 'TRANSLATE_BATCH_STREAM' });
+  });
+
   it('rejects arbitrary network fields from a content script', () => {
     expect(() =>
       parseRuntimeMessage({

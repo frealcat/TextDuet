@@ -78,10 +78,7 @@ try {
   await popupPage.getByRole('button', { name: '翻译当前网页' }).waitFor();
   const firstStartResult = await startFixtureTranslation(worker, popupPage, fixturePage);
   assert.deepEqual(firstStartResult, { ok: true, message: '已开始翻译当前网页' });
-  await fixturePage.locator('#textduet-status').filter({ hasText: '翻译完成' }).waitFor({ timeout: 8_000 }).catch(async (error) => {
-    const status = await fixturePage.locator('#textduet-status').textContent().catch(() => null);
-    throw new Error(`first translation did not finish; status=${status}; ${error instanceof Error ? error.message : String(error)}`);
-  });
+  await fixturePage.locator('.textduet-translation').first().waitFor({ timeout: 8_000 });
   const translatedTexts = await fixturePage.locator('.textduet-translation').allTextContents();
   assert.equal(translatedTexts.length, sourceTexts.length);
   assert(translatedTexts.every((text) => text.startsWith('【缓存译文】')));
@@ -90,7 +87,7 @@ try {
   await fixturePage.reload();
   const secondStartResult = await startFixtureTranslation(worker, popupPage, fixturePage);
   assert.deepEqual(secondStartResult, { ok: true, message: '已开始翻译当前网页' });
-  await fixturePage.locator('#textduet-status').filter({ hasText: '翻译完成' }).waitFor({ timeout: 8_000 });
+  await fixturePage.locator('.textduet-translation').first().waitFor({ timeout: 8_000 });
   assert.equal(await fixturePage.locator('.textduet-translation').count(), sourceTexts.length);
 
   await optionsPage.close().catch(() => undefined);

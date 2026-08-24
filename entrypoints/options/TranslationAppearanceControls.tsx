@@ -21,7 +21,7 @@ export function TranslationAppearanceControls({
   const isColorValid = isSupportedTranslationColor(translationColor);
 
   return (
-    <div className="appearance-controls">
+    <div className="appearance-controls" aria-label="阅读显示设置">
       <label className="select-field">
         <span>默认显示方式</span>
         <select

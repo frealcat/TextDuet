@@ -21,7 +21,7 @@
 
 ```mermaid
 flowchart TD
-    P["Popup\n开始 / 停止 / 目标语言"] -->|"可信扩展消息"| B["MV3 Service Worker"]
+    P["Popup\n开始 / 停止 / 语言对"] -->|"可信扩展消息"| B["MV3 Service Worker"]
     O["Options\nProvider / Key / 模型"] -->|"保存与连接测试"| B
     B -->|"activeTab + scripting"| C["按需注入翻译脚本"]
     C -->|"段落 ID + 纯文本"| B
@@ -32,12 +32,13 @@ flowchart TD
     B --> S["storage.session / storage.local"]
     B --> T["IndexedDB\n译文缓存 / 用量账本"]
     O -->|"本地预览/下载请求"| B
+    M["Chrome Context Menu\n选区翻译"] --> C
 ```
 
 ### Popup
 
 - 获取脱敏后的 Provider 状态。
-- 选择目标语言。
+- 选择源语言与目标语言。
 - 触发当前标签页翻译或停止。
 - 不读取 API Key。
 
@@ -53,7 +54,8 @@ flowchart TD
 
 - 唯一允许读取 API Key 的业务层。
 - 根据可信设置拼接 Provider 请求 URL。
-- 执行模型调用、响应验证和错误映射。
+- 执行模型调用、SSE/JSON 响应验证和错误映射。
+- 维护按标签页取消的流式 Port。
 - 按需将 `translator.js` 注入当前活动标签页。
 - 不接受内容脚本传入任意网络 URL。
 
@@ -63,7 +65,8 @@ flowchart TD
 - 通过 `src/translator/site-rules.ts` 按当前主机选择保守内容根节点；未知站点或规则根缺失时回退通用提取。
 - 提取可见块级文本并分批。
 - 在本次运行中使用受控 MutationObserver 监听文档根节点的新增、变为可见和文本变化，去抖后串行增量处理；复用节点重新插入时失效旧源文本快照。
-- 只发送段落 ID、文本与目标语言。
+- 只发送段落 ID、文本、语言对和已校验译文。
+- 通过 Port 接收完成段落并立即渲染；动态新增内容在当前批次结束后进入下一批。
 - 将已校验译文通过 `textContent` 插入 DOM。
 - 不读取 Storage，不接触 API Key。
 
@@ -93,8 +96,10 @@ docs/                     PRD 与架构决策
 1. 设置：`GET_PROVIDER_SETTINGS`、`SAVE_PROVIDER_SETTINGS`、`TEST_PROVIDER`。
 2. 成本：`GET_COST_DASHBOARD`、`GET_USAGE_HISTORY`、`GET_PROVIDER_BALANCE`、`REFRESH_PROVIDER_PRICING`、`SAVE_COST_SETTINGS`、`CLEAR_USAGE_LEDGER`、`ESTIMATE_TRANSLATION`。
 3. 缓存：`GET_TRANSLATION_CACHE_DASHBOARD`、`CLEAR_TRANSLATION_CACHE`。
-4. 标签控制：`TRANSLATE_ACTIVE_TAB`、`STOP_ACTIVE_TAB`、`GET_ACTIVE_TAB_TRANSLATION_STATE`、`SET_ACTIVE_TAB_DISPLAY_MODE`、`SET_ACTIVE_MODEL`。
-5. 页面翻译：`START_PAGE_TRANSLATION`、`STOP_PAGE_TRANSLATION`、`SET_PAGE_DISPLAY_MODE`、`GET_TRANSLATION_STATE`、`TRANSLATE_BATCH`。
+4. 标签控制：`TRANSLATE_ACTIVE_TAB`、`STOP_ACTIVE_TAB`、`GET_ACTIVE_TAB_TRANSLATION_STATE`、`SET_ACTIVE_TAB_DISPLAY_MODE`、`SET_ACTIVE_MODEL`、`SET_LANGUAGE_PREFERENCES`。
+5. 页面翻译：`START_PAGE_TRANSLATION`、`STOP_PAGE_TRANSLATION`、`SET_PAGE_DISPLAY_MODE`、`GET_TRANSLATION_STATE`、`TRANSLATE_BATCH`、`TRANSLATE_BATCH_STREAM`、`TRANSLATE_SELECTION`。
+
+流式 Port 名为 `textduet-translation-stream`，事件只允许 `TRANSLATION_BLOCK`、`TRANSLATION_COMPLETE` 和 `TRANSLATION_ERROR`；事件先经过 schema 校验，再进入网页渲染。
 
 所有未知消息先通过 `src/core/schemas.ts` 的 Zod 判别联合解析，再进入业务处理。TypeScript 类型由同一 schema 推导；公开设置、操作结果和翻译批次也在接收上下文再次校验。Schema 使用严格对象，拒绝内容脚本夹带任意 URL、认证字段或未声明参数。
 
@@ -105,6 +110,7 @@ docs/                     PRD 与架构决策
 ```ts
 interface TranslationProvider {
   translate(settings, apiKey, request): Promise<TranslationBatchResponse>;
+  translateStream(settings, apiKey, request, options): Promise<ProviderTranslationStreamResult>;
   testConnection(settings, apiKey): Promise<void>;
 }
 ```
@@ -116,6 +122,7 @@ MVP 的 `OpenAiCompatibleProvider` 使用 Chat Completions：
 - 输入：system prompt + JSON 序列化的段落数组。
 - 输出：严格校验 `{ blocks: [{ id, translatedText }] }`。
 - 可靠性：默认单请求超时 60 秒，支持 Abort 信号，并只对明确的限流、服务端和网络错误执行有限重试。
+- 流式：优先解析 `text/event-stream` 的 Chat Completions SSE；普通 JSON 响应在同一次请求中回退到完整解析，不自动重复请求。
 - 阿里云 Qwen3 翻译兼容：仅当 Base URL 属于阿里云域名且模型名符合 Qwen3 家族时，在 Chat Completions 请求顶层加入 `enable_thinking: false`；该字段用于已验证的翻译延迟兼容，不扩散到其他 OpenAI-compatible Provider，也不进入通用设置、内容脚本或网页。
 - Options 提供“阿里云百炼 Qwen”显式预设并填入兼容模式 Base URL。`provider` 仍保存为协议标识 `openai-compatible`，避免把 UI 厂商品牌误建模为第二套网络协议。
 
@@ -128,6 +135,7 @@ MVP 的 `OpenAiCompatibleProvider` 使用 Chat Completions：
 - `activeTab`：用户点击后临时访问当前标签页。
 - `scripting`：注入 `translator.js`。
 - `storage`：保存配置以及会话级或本机级 Key。
+- `contextMenus`：用户右键选中文本后显示选区翻译入口。
 
 可选主机权限：
 
@@ -153,7 +161,7 @@ Service Worker 启动后调用 `setAccessLevel(TRUSTED_CONTEXTS)`。这减少内
 
 ## 8. 翻译数据流
 
-1. Translator Script 解析当前页面主机，选择本地站点规则的内容根节点和局部块选择器；未知站点或根节点缺失时查询通用块级元素集合。Chroma Research 只在正文根内把目录链接加入候选，顶部导航仍排除。
+1. Translator Script 解析当前页面主机，选择本地站点规则的内容根节点和局部块选择器；未知站点或根节点缺失时查询通用块级元素集合。页头、导航 tab/link 和页脚可读文本纳入候选，交互控件、侧栏、代码和表单继续排除。Chroma Research 只在正文根内把目录链接加入候选。
 2. 过滤隐藏、可编辑、代码、表单与交互区域；重复运行时复用内容脚本内缓存的原文。
 3. 正规化空白，以内容脚本内的 WeakMap 为节点分配不可被网页伪造的 ID，并去除嵌套重复候选。
 4. 通过 `src/core/translation-planning.ts` 的纯函数按 4000 字符预算创建批次。
@@ -162,11 +170,13 @@ Service Worker 启动后调用 `setAccessLevel(TRUSTED_CONTEXTS)`。这减少内
 7. Service Worker 从可信存储读取 Provider 配置和 Key。
 8. Provider 将页面文本视为不可信数据，请求模型只执行翻译；单次请求 60 秒超时，429、5xx 和网络错误最多进行三次指数退避尝试。
 9. Service Worker 校验 JSON、段落数、ID 和字段类型，写入缓存后按原请求顺序合并命中与新译文。
-10. Translator Script 通过 ID 定位节点，以纯文本插入译文，并用原文 wrapper 支持双语、仅原文和仅译文三种 CSS 显示方式。每个候选块附带标准化原文色、有效背景色、偏好色和本地对比度；模型只能返回 `preferred` / `source` 建议，本地 WCAG 门禁最终决定实际颜色并通过已校验的内联属性应用。完成与停止状态提示延时移除。
+10. Translator Script 通过 ID 定位节点，以纯文本插入译文，并用原文 wrapper 支持双语、仅原文和仅译文三种 CSS 显示方式。每个候选块附带标准化原文色、有效背景色、偏好色和本地对比度；模型只能返回 `preferred` / `source` 建议，本地 WCAG 门禁最终决定实际颜色并通过已校验的内联属性应用。网页不创建全局状态浮层，状态只保留在扩展上下文。
 11. 用户主动启动后，Translator Script 在当前运行会话内监听文档根节点的新增、可见性和文本变化；去抖后只收集尚无当前语言译文的块，复用同一串行批次与缓存链路。节点被移出后离线改写再插回、或整个 `body` 被替换时，旧 WeakMap 源文本快照会失效。
 12. 用户停止时，Translator Script 断开 Observer、清理待处理扫描并阻止后续批次，Service Worker 同时按标签页取消当前在途请求。
 13. 翻译启动成功后，Service Worker 仅在 storage.session 记录最近翻译标签页 ID。Options 诊断请求读取该 ID，向 Translator Script 请求脱敏计数，再在本地生成诊断对象；路径必须由用户单独同意，下载使用浏览器本地 Blob，不自动上传。
-14. Popup 在翻译进行中轮询当前页的脱敏状态以同步单一操作按钮；该查询不读取网页正文、Key 或 Provider 响应。模型切换只更新可信设置，用户再次触发翻译后才产生新请求。
+14. Popup 在翻译进行中轮询当前页的脱敏状态以同步单一操作按钮；该查询不读取网页正文、Key 或 Provider 响应。模型切换和语言对只更新可信设置，用户再次触发翻译后才产生新请求。
+15. 用户从 Chrome Context Menu 或选区边角快捷图标触发选区翻译时，Service Worker 按 `frameId` 注入 Translator Script；Translator Script 重新核对当前选区和正文锚点，跨段选区作为一个缓存块在锚点后插入纯文本译文。快捷图标只在用户打开 Popup/开启设置后按需注入当前页，不注册静态全站脚本。
+16. Popup 与 Options 的语言选择共享 `src/ui/LanguagePairPicker.tsx`，页面样式必须通过组件级 class 和显式网格维护，避免宽泛后代选择器造成跨组件污染。
 
 ## 9. 安全清单
 

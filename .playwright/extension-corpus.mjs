@@ -539,7 +539,7 @@ async function verifyReadingControls(popupPage, fixturePage) {
   await popupPage.getByRole('button', { name: '双语', exact: true }).click();
   await fixturePage.waitForFunction(() => document.documentElement.dataset.textduetDisplayMode === 'bilingual');
   await fixturePage.waitForTimeout(3_700);
-  assert.equal(await fixturePage.locator('#textduet-status').count(), 0, 'completion tip did not auto-hide');
+  assert.equal(await fixturePage.locator('#textduet-status').count(), 0, 'webpage status overlay must not exist');
   await fixturePage.screenshot({
     path: resolve('output/playwright', 'm2-reading-controls.png'),
     fullPage: true,
@@ -585,7 +585,7 @@ async function installCompletionTracker(page) {
     }
     const tracker = { completeCount: 0, errorCount: 0, lastState: '' };
     const inspect = () => {
-      const state = document.querySelector('#textduet-status')?.getAttribute('data-textduet-state') || '';
+      const state = document.querySelectorAll('.textduet-translation').length > 0 ? 'complete' : '';
       if (state !== tracker.lastState) {
         if (state === 'complete') {
           tracker.completeCount += 1;
@@ -625,11 +625,7 @@ async function runAndWaitForCompletion(worker, popupPage, fixturePage, timeout =
     baseline,
     { timeout },
   );
-  assert.equal(
-    await fixturePage.locator('#textduet-status').getAttribute('data-textduet-state'),
-    'complete',
-    'fixture translation entered an error state',
-  );
+  assert.ok(await fixturePage.locator('.textduet-translation').count() > 0, 'fixture produced no translations');
   return performance.now() - startedAt;
 }
 
@@ -656,11 +652,7 @@ async function runFromPopupAndWaitForCompletion(popupPage, fixturePage, timeout 
     baseline,
     { timeout },
   );
-  assert.equal(
-    await fixturePage.locator('#textduet-status').getAttribute('data-textduet-state'),
-    'complete',
-    'Popup-started translation entered an error state',
-  );
+  assert.ok(await fixturePage.locator('.textduet-translation').count() > 0, 'Popup produced no translations');
   await popupPage.getByRole('button', { name: '翻译当前网页' }).waitFor({ timeout: 3_000 });
   return performance.now() - startedAt;
 }

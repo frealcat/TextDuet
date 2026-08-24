@@ -13,7 +13,7 @@ for (const fileName of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md']) {
 
 assert.deepEqual(
   [...(manifest.permissions || [])].sort(),
-  ['activeTab', 'scripting', 'storage'],
+  ['activeTab', 'contextMenus', 'scripting', 'storage'],
   'production permissions changed; review docs/CHROME-PERMISSIONS.md before release',
 );
 assert.deepEqual(

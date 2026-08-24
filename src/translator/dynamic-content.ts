@@ -26,7 +26,7 @@ export function observeDynamicContent(
 
 function isTextDuetMutation(record: MutationRecord): boolean {
   const target = record.target instanceof Element ? record.target : record.target.parentElement;
-  if (target?.closest(`#textduet-status, .${TRANSLATION_CLASS}, .${SOURCE_CLASS}, #textduet-styles`)) return true;
+  if (target?.closest(`.${TRANSLATION_CLASS}, .${SOURCE_CLASS}, #textduet-styles`)) return true;
   if (record.type !== 'childList') return false;
   return record.addedNodes.length > 0
     && [...record.addedNodes].every(isTextDuetNode);
@@ -34,8 +34,8 @@ function isTextDuetMutation(record: MutationRecord): boolean {
 
 function isTextDuetNode(node: Node): boolean {
   if (!(node instanceof Element)) return false;
-  return node.matches(`#textduet-status, .${TRANSLATION_CLASS}, .${SOURCE_CLASS}, #textduet-styles`)
-    || Boolean(node.closest(`#textduet-status, .${TRANSLATION_CLASS}, .${SOURCE_CLASS}, #textduet-styles`));
+  return node.matches(`.${TRANSLATION_CLASS}, .${SOURCE_CLASS}, #textduet-styles`)
+    || Boolean(node.closest(`.${TRANSLATION_CLASS}, .${SOURCE_CLASS}, #textduet-styles`));
 }
 
 function invalidateChangedCandidate(

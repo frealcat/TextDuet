@@ -9,10 +9,28 @@ export interface ProviderRequestOptions {
   signal?: AbortSignal;
 }
 
+export interface ProviderStreamOptions extends ProviderRequestOptions {
+  onBlock?: (block: TranslatedBlock) => void;
+}
+
 export interface ProviderTranslationResult {
   blocks: TranslatedBlock[];
   model: string;
   usage?: ModelUsage;
+}
+
+export interface ProviderTranslationStreamResult extends ProviderTranslationResult {
+  isStreaming: boolean;
+}
+
+export class ProviderStreamError extends Error {
+  readonly usage?: ModelUsage;
+
+  constructor(message: string, usage?: ModelUsage) {
+    super(message);
+    this.name = 'ProviderStreamError';
+    this.usage = usage;
+  }
 }
 
 export interface TranslationProvider {
@@ -22,6 +40,13 @@ export interface TranslationProvider {
     request: TranslationBatchRequest,
     options?: ProviderRequestOptions,
   ): Promise<ProviderTranslationResult>;
+
+  translateStream(
+    settings: ProviderSettings,
+    apiKey: string,
+    request: TranslationBatchRequest,
+    options?: ProviderStreamOptions,
+  ): Promise<ProviderTranslationStreamResult>;
 
   testConnection(
     settings: ProviderSettings,

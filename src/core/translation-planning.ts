@@ -3,6 +3,7 @@ import type { TranslationBlock } from './contracts';
 export const MIN_TRANSLATION_CHARACTERS = 2;
 export const MAX_TRANSLATION_CHARACTERS = 4_000;
 export const DEFAULT_BATCH_CHARACTER_LIMIT = 4_000;
+export const FIRST_BATCH_CHARACTER_LIMIT = 1_200;
 
 export interface TranslationCandidateSnapshot {
   id: string;
@@ -57,6 +58,7 @@ export function pruneAncestorCandidates<T>(
 export function createTranslationBatches(
   blocks: readonly TranslationBlock[],
   characterLimit = DEFAULT_BATCH_CHARACTER_LIMIT,
+  firstBatchCharacterLimit = Math.min(FIRST_BATCH_CHARACTER_LIMIT, characterLimit),
 ): TranslationBlock[][] {
   if (!Number.isInteger(characterLimit) || characterLimit < MAX_TRANSLATION_CHARACTERS) {
     throw new Error(`批次字符上限不能小于 ${MAX_TRANSLATION_CHARACTERS}`);
@@ -65,12 +67,15 @@ export function createTranslationBatches(
   const batches: TranslationBlock[][] = [];
   let currentBatch: TranslationBlock[] = [];
   let currentCharacters = 0;
+  let isFirstBatch = true;
 
   for (const block of blocks) {
-    if (currentBatch.length > 0 && currentCharacters + block.text.length > characterLimit) {
+    const currentLimit = isFirstBatch ? firstBatchCharacterLimit : characterLimit;
+    if (currentBatch.length > 0 && currentCharacters + block.text.length > currentLimit) {
       batches.push(currentBatch);
       currentBatch = [];
       currentCharacters = 0;
+      isFirstBatch = false;
     }
 
     currentBatch.push(block);

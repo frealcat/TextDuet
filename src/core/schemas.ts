@@ -9,6 +9,8 @@ const TRANSLATED_TEXT_MAX_LENGTH = 16_000;
 const MAX_BLOCKS_PER_BATCH = 200;
 const MAX_MONEY_AMOUNT = 1_000_000_000;
 const MAX_MODEL_OPTIONS = 50;
+const SourceLanguagePreferenceSchema = z.string().check(z.trim(), z.minLength(1), z.maxLength(LANGUAGE_CODE_MAX_LENGTH));
+const TargetLanguagePreferenceSchema = z.string().check(z.trim(), z.minLength(1), z.maxLength(LANGUAGE_CODE_MAX_LENGTH));
 
 const NonNegativeMoneySchema = z.number().check(
   z.nonnegative(),
@@ -64,6 +66,8 @@ export const ProviderSettingsSchema = z.strictObject({
   targetLanguage: z
     .string()
     .check(z.trim(), z.minLength(1), z.maxLength(LANGUAGE_CODE_MAX_LENGTH)),
+  sourceLanguage: z.optional(SourceLanguagePreferenceSchema),
+  selectionQuickAction: z.optional(z.boolean()),
   displayMode: z.enum(['bilingual', 'source-only', 'translated-only']),
   translationColor: z.optional(CssColorSchema),
   customSystemPrompt: z.string().check(z.maxLength(12_000)),
@@ -117,6 +121,7 @@ export const TranslationBatchRequestSchema = z.strictObject({
 export const PageTranslationStateSchema = z.strictObject({
   state: z.enum(['idle', 'progress', 'complete', 'stopped', 'empty', 'error']),
   hasRun: z.boolean(),
+  message: z.optional(z.string().check(z.maxLength(2_000))),
 });
 
 export const ModelUsageSchema = z.strictObject({
@@ -311,6 +316,12 @@ export const TranslationBatchResponseSchema = z.strictObject({
   cache: TranslationCacheBatchSchema,
 });
 
+export const TranslationStreamEventSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('TRANSLATION_BLOCK'), block: TranslatedBlockSchema }),
+  z.strictObject({ type: z.literal('TRANSLATION_COMPLETE'), response: TranslationBatchResponseSchema }),
+  z.strictObject({ type: z.literal('TRANSLATION_ERROR'), message: z.string().check(z.maxLength(2_000)) }),
+]);
+
 export const TranslationEstimateResponseSchema = z.strictObject({
   estimate: CostEstimateSchema,
   today: TodayUsageSummarySchema,
@@ -364,9 +375,26 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   }),
   z.strictObject({
     type: z.literal('TRANSLATE_ACTIVE_TAB'),
+    sourceLanguage: z.optional(SourceLanguagePreferenceSchema),
     targetLanguage: z
       .string()
       .check(z.trim(), z.minLength(1), z.maxLength(LANGUAGE_CODE_MAX_LENGTH)),
+  }),
+  z.strictObject({
+    type: z.literal('SET_LANGUAGE_PREFERENCES'),
+    sourceLanguage: SourceLanguagePreferenceSchema,
+    targetLanguage: TargetLanguagePreferenceSchema,
+  }),
+  z.strictObject({
+    type: z.literal('SET_SELECTION_QUICK_ACTION'),
+    enabled: z.boolean(),
+  }),
+  z.strictObject({
+    type: z.literal('CONFIGURE_SELECTION_QUICK_ACTION'),
+    enabled: z.boolean(),
+    sourceLanguage: z.optional(SourceLanguagePreferenceSchema),
+    targetLanguage: z.optional(TargetLanguagePreferenceSchema),
+    translationColor: z.optional(CssColorSchema),
   }),
   z.strictObject({ type: z.literal('STOP_ACTIVE_TAB') }),
   z.strictObject({ type: z.literal('GET_ACTIVE_TAB_TRANSLATION_STATE') }),
@@ -380,11 +408,13 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   }),
   z.strictObject({
     type: z.literal('START_PAGE_TRANSLATION'),
+    sourceLanguage: z.optional(SourceLanguagePreferenceSchema),
     targetLanguage: z
       .string()
       .check(z.trim(), z.minLength(1), z.maxLength(LANGUAGE_CODE_MAX_LENGTH)),
     displayMode: z.optional(z.enum(['bilingual', 'source-only', 'translated-only'])),
     translationColor: z.optional(CssColorSchema),
+    selectionQuickAction: z.optional(z.boolean()),
     forceRefresh: z.optional(z.boolean()),
   }),
   z.strictObject({ type: z.literal('STOP_PAGE_TRANSLATION') }),
@@ -401,6 +431,23 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal('TRANSLATE_BATCH'),
     request: TranslationBatchRequestSchema,
+  }),
+  z.strictObject({
+    type: z.literal('TRANSLATE_BATCH_STREAM'),
+    request: TranslationBatchRequestSchema,
+  }),
+  z.strictObject({
+    type: z.literal('TRANSLATE_SELECTION'),
+    text: z.string().check(z.trim(), z.minLength(2), z.maxLength(16_000)),
+    sourceLanguage: SourceLanguagePreferenceSchema,
+    targetLanguage: TargetLanguagePreferenceSchema,
+    frameId: z.optional(z.int().check(z.nonnegative())),
+    translationColor: z.optional(CssColorSchema),
+  }),
+  z.strictObject({
+    type: z.literal('REQUEST_SELECTION_TRANSLATION'),
+    text: z.string().check(z.trim(), z.minLength(2), z.maxLength(16_000)),
+    frameId: z.optional(z.int().check(z.nonnegative())),
   }),
 ]);
 
@@ -474,6 +521,12 @@ export function parseTranslationBatchResponse(
   if (!result.success) {
     throw new Error('扩展返回的译文格式无效');
   }
+  return result.data;
+}
+
+export function parseTranslationStreamEvent(value: unknown): z.infer<typeof TranslationStreamEventSchema> {
+  const result = TranslationStreamEventSchema.safeParse(value);
+  if (!result.success) throw new Error('扩展返回的流式译文格式无效');
   return result.data;
 }
 

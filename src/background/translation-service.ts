@@ -4,6 +4,7 @@ import type {
   TranslationBatchResponse,
   TranslationEstimateResponse,
 } from '@/src/core/contracts';
+import type { TranslatedBlock } from '@/src/core/contracts';
 import { effectivePriceForModel } from '@/src/core/cost';
 import { parseConfiguredProviderSettings } from '@/src/core/schemas';
 import { mergeTranslationBlocks } from '@/src/core/translation-cache';
@@ -29,7 +30,7 @@ export async function estimateTranslationWithCache(
   request: TranslationBatchRequest,
 ): Promise<TranslationEstimateResponse> {
   const settings = await getConfiguredSettings();
-  const systemPrompt = resolveSystemPrompt(settings);
+  const systemPrompt = resolveSystemPrompt(settings, request);
   const cache = await lookupCacheSafely(settings, request, systemPrompt);
   const cacheSummary = {
     hitCount: cache.cachedBlocks.length,
@@ -70,7 +71,7 @@ export async function translateWithCache(
   signal: AbortSignal,
 ): Promise<TranslationBatchResponse> {
   const settings = await getConfiguredSettings();
-  const systemPrompt = resolveSystemPrompt(settings);
+  const systemPrompt = resolveSystemPrompt(settings, request);
   const cache = await lookupCacheSafely(settings, request, systemPrompt);
   const cacheSummary = {
     hitCount: cache.cachedBlocks.length,
@@ -128,6 +129,53 @@ export async function translateWithCache(
       ...cacheSummary,
       isAvailable: cacheSummary.isAvailable && isCacheStored,
     },
+  };
+}
+
+export async function translateStreamWithCache(
+  provider: TranslationProvider,
+  request: TranslationBatchRequest,
+  signal: AbortSignal,
+  onBlock: (block: TranslatedBlock) => void,
+): Promise<TranslationBatchResponse> {
+  const settings = await getConfiguredSettings();
+  const systemPrompt = resolveSystemPrompt(settings, request);
+  const cache = await lookupCacheSafely(settings, request, systemPrompt);
+  const cacheSummary = { hitCount: cache.cachedBlocks.length, missCount: cache.missingBlocks.length, isAvailable: cache.isAvailable };
+  cache.cachedBlocks.forEach(onBlock);
+  if (cache.missingBlocks.length === 0) {
+    const dashboard = await getCostDashboard(settings.model);
+    return {
+      blocks: mergeTranslationBlocks(request.blocks, cache.cachedBlocks, []),
+      model: settings.model, usage: { inputTokens: 0, outputTokens: 0, kind: 'cached' },
+      cost: { currency: dashboard.today.currency, amount: 0, isEstimate: false, today: dashboard.today, crossedThresholds: [], isLedgerRecorded: true },
+      cache: cacheSummary,
+    };
+  }
+  const uncachedRequest = { sourceLanguage: request.sourceLanguage, targetLanguage: request.targetLanguage, blocks: cache.missingBlocks };
+  const apiKey = await getApiKey(settings.apiKeyPersistence);
+  const streamedBlocks: TranslatedBlock[] = [];
+  let result;
+  try {
+    result = await provider.translateStream(settings, apiKey, uncachedRequest, {
+      signal,
+      onBlock: (block) => { streamedBlocks.push(block); onBlock(block); },
+    });
+  } catch (error) {
+    const usage = error && typeof error === 'object' && 'usage' in error
+      ? (error as { usage?: import('@/src/core/contracts').ModelUsage }).usage
+      : undefined;
+    if (usage) await settleTranslation(settings, uncachedRequest, systemPrompt, usage);
+    throw error;
+  }
+  const settlement = await settleTranslation(settings, uncachedRequest, systemPrompt, result.usage);
+  const isCacheStored = streamedBlocks.length === uncachedRequest.blocks.length
+    ? await storeTranslationCache(settings, uncachedRequest, systemPrompt, streamedBlocks).then(() => true, () => false)
+    : false;
+  return {
+    blocks: mergeTranslationBlocks(request.blocks, cache.cachedBlocks, result.blocks),
+    model: result.model, usage: settlement.usage, cost: settlement.cost,
+    cache: { ...cacheSummary, isAvailable: cacheSummary.isAvailable && isCacheStored },
   };
 }
 

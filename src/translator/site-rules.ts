@@ -17,7 +17,7 @@ export const SITE_RULES: readonly SiteRule[] = [
     id: 'github',
     hostnames: ['github.com'],
     rootSelectors: ['main', '[data-testid="readme-content"]'],
-    excludedSelectors: ['header', '[data-testid="repository-container-header"]'],
+    excludedSelectors: ['[data-testid="repository-container-header"]'],
   },
   {
     id: 'framework-docs',
@@ -29,20 +29,20 @@ export const SITE_RULES: readonly SiteRule[] = [
       'docs.astro.build',
     ],
     rootSelectors: ['main', 'article', '.VPDoc'],
-    excludedSelectors: ['header', 'nav', 'aside', '.sidebar', '.toc'],
+    excludedSelectors: ['aside', '.sidebar', '.toc'],
   },
   {
     id: 'overseas-community',
     hostnames: ['dev.to', 'lobste.rs'],
     rootSelectors: ['main', '#content', '#inside'],
-    excludedSelectors: ['header', 'nav', 'aside'],
+    excludedSelectors: ['aside'],
   },
   {
     id: 'chroma-research',
     hostnames: ['trychroma.com'],
     pathPrefixes: ['/research/'],
     rootSelectors: ['.markdown-content', 'article'],
-    excludedSelectors: ['header'],
+    excludedSelectors: [],
     includedSelectors: ['.markdown-content nav'],
     blockSelectors: ['.markdown-content nav a'],
   },
@@ -50,7 +50,7 @@ export const SITE_RULES: readonly SiteRule[] = [
     id: 'creative-design',
     hostnames: ['smashingmagazine.com', 'typewolf.com', 'onepagelove.com'],
     rootSelectors: ['main'],
-    excludedSelectors: ['header', 'nav', 'aside', '[role="navigation"]'],
+    excludedSelectors: ['aside'],
   },
 ];
 

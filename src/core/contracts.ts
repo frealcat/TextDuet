@@ -18,6 +18,7 @@ import type {
   TranslatedBlockSchema,
   TranslationBatchRequestSchema,
   TranslationBatchResponseSchema,
+  TranslationStreamEventSchema,
   TranslationEstimateResponseSchema,
   TranslationCacheBatchSchema,
   TranslationCacheDashboardSchema,
@@ -30,6 +31,8 @@ import type {
 
 export type ApiKeyPersistence = 'session' | 'local';
 export type TranslationDisplayMode = 'bilingual' | 'source-only' | 'translated-only';
+export type SourceLanguagePreference = 'auto' | string;
+export type TargetLanguagePreference = 'system' | string;
 
 export type ProviderSettings = z.infer<typeof ProviderSettingsSchema>;
 export type TranslationBlock = z.infer<typeof TranslationBlockSchema>;
@@ -57,3 +60,4 @@ export type ProviderBalance = z.infer<typeof ProviderBalanceSchema>;
 export type CompatibilityPageSnapshot = z.infer<typeof CompatibilityPageSnapshotSchema>;
 export type CompatibilityDiagnostic = z.infer<typeof CompatibilityDiagnosticSchema>;
 export type PageTranslationState = z.infer<typeof PageTranslationStateSchema>;
+export type TranslationStreamEvent = z.infer<typeof TranslationStreamEventSchema>;

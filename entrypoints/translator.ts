@@ -1,5 +1,6 @@
 import type {
   RuntimeMessage,
+  TranslationBatchResponse,
   TranslationBlock,
   TranslationDisplayMode,
 } from '@/src/core/contracts';
@@ -10,6 +11,7 @@ import {
   parseRuntimeMessage,
   TranslationBatchResponseSchema,
   TranslationEstimateResponseSchema,
+  parseTranslationStreamEvent,
 } from '@/src/core/schemas';
 import { createTranslationBatches } from '@/src/core/translation-planning';
 import {
@@ -36,6 +38,7 @@ import {
 } from '@/src/translator/render-translations';
 import { resolveSiteRule } from '@/src/translator/site-rules';
 import { collectStyleContext } from '@/src/translator/style-context';
+import { captureSelectionAnchor, getCapturedSelection, renderSelectionError, renderSelectionTranslation } from '@/src/translator/selection-translation';
 
 const INSTALL_MARKER = '__textDuetInstalled';
 type TranslatorGlobal = typeof globalThis & {
@@ -44,6 +47,7 @@ type TranslatorGlobal = typeof globalThis & {
 
 let activeRunId = 0;
 let nextBlockId = 0;
+const activeStreamPorts = new Set<Browser.runtime.Port>();
 const idsByElement = new WeakMap<HTMLElement, string>();
 const sourceTextByElement = new WeakMap<HTMLElement, string>();
 let activeRun: TranslationRun | null = null;
@@ -55,9 +59,11 @@ let lastRunSnapshot: {
 
 interface TranslationRun {
   id: number;
+  sourceLanguage: string;
   targetLanguage: string;
   displayMode: TranslationDisplayMode;
   translationColor: string;
+  selectionQuickAction: boolean;
   forceRefresh: boolean;
   observer: MutationObserver | null;
   scanTimer: number | undefined;
@@ -84,12 +90,36 @@ export default defineUnlistedScript(() => {
 
     if (parsedMessage.type === 'START_PAGE_TRANSLATION') {
       startTranslationRun(
+        parsedMessage.sourceLanguage ?? 'auto',
         parsedMessage.targetLanguage,
         parsedMessage.displayMode ?? 'bilingual',
         parsedMessage.translationColor ?? DEFAULT_TRANSLATION_COLOR,
+        parsedMessage.selectionQuickAction === true,
         parsedMessage.forceRefresh ?? true,
       );
       sendResponse({ ok: true, message: '已开始翻译当前网页' });
+      return false;
+    }
+
+    if (parsedMessage.type === 'TRANSLATE_SELECTION') {
+      captureSelectionAnchor();
+      void translateSelection(parsedMessage.text, parsedMessage.sourceLanguage, parsedMessage.targetLanguage, parsedMessage.translationColor);
+      sendResponse({ ok: true, message: '已开始翻译选中文本' });
+      return false;
+    }
+
+    if (parsedMessage.type === 'CONFIGURE_SELECTION_QUICK_ACTION') {
+      if (parsedMessage.enabled) {
+        installSelectionQuickAction({
+          ...createSelectionRun(parsedMessage.targetLanguage || 'en'),
+          id: 0, selectionQuickAction: true,
+          sourceLanguage: parsedMessage.sourceLanguage || 'auto',
+          translationColor: parsedMessage.translationColor || DEFAULT_TRANSLATION_COLOR,
+        });
+      } else {
+        removeSelectionQuickAction();
+      }
+      sendResponse({ ok: true, message: '选区快捷翻译设置已更新' });
       return false;
     }
 
@@ -134,9 +164,11 @@ export default defineUnlistedScript(() => {
 });
 
 function startTranslationRun(
+  sourceLanguage: string,
   targetLanguage: string,
   displayMode: TranslationDisplayMode,
   translationColor: string,
+  selectionQuickAction: boolean,
   forceRefresh: boolean,
 ): void {
   stopActiveRun();
@@ -147,9 +179,11 @@ function startTranslationRun(
   const runId = ++activeRunId;
   const run: TranslationRun = {
     id: runId,
+    sourceLanguage,
     targetLanguage,
     displayMode,
     translationColor,
+    selectionQuickAction,
     forceRefresh,
     observer: null,
     scanTimer: undefined,
@@ -161,6 +195,7 @@ function startTranslationRun(
     failedBatchCount: 0,
   };
   activeRun = run;
+  installSelectionQuickAction(run);
   run.observer = observeDynamicContent(sourceTextByElement, () => {
     if (isActiveRun(run.id)) scheduleScan(run, DYNAMIC_CONTENT_SCAN_DELAY_MS);
   });
@@ -169,6 +204,9 @@ function startTranslationRun(
 
 function stopActiveRun(): void {
   activeRunId += 1;
+  activeStreamPorts.forEach((port) => port.disconnect());
+  activeStreamPorts.clear();
+  removeSelectionQuickAction();
   if (!activeRun) return;
   lastRunSnapshot = {
     candidateCount: activeRun.seenIds.size,
@@ -181,7 +219,7 @@ function stopActiveRun(): void {
 }
 
 function scheduleScan(run: TranslationRun, delayMs: number): void {
-  if (!isActiveRun(run.id)) return;
+  if (run.id !== 0 && !isActiveRun(run.id)) return;
   run.hasPendingScan = true;
   if (run.isProcessing || run.scanTimer !== undefined) return;
   run.scanTimer = window.setTimeout(() => {
@@ -221,6 +259,7 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
         continue;
       }
 
+      candidates.sort(compareCandidatePriority);
       try {
         await translateCandidates(candidates, run);
       } catch (error) {
@@ -250,66 +289,51 @@ async function translateCandidates(
     styledCandidates.map(({ id, text, styleContext }) => ({ id, text, styleContext })),
   );
 
-  const estimates = await Promise.all(
+  // Cost estimation runs alongside the first model request so it cannot delay
+  // the first visible translation block. It remains informational if it fails.
+  const estimatesPromise = Promise.all(
     batches.map((blocks) => requestTranslationEstimate(blocks, targetLanguage, run.forceRefresh)),
-  );
-  const estimate = summarizePageEstimates(estimates, candidates.length);
-  const { currency, isPriceConfigured, message: estimateMessage } = estimate;
-  updatePageStatus(estimateMessage, 'progress');
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  ).catch(() => []);
+  const initialEstimate = summarizePageEstimates([], candidates.length);
+  updatePageStatus('正在准备首批译文…', 'progress');
 
   let recordedAmount = 0;
-  let latestTodayAmount = estimate.todayTotalCost;
+  let latestTodayAmount = initialEstimate.todayTotalCost;
   let latestThreshold: 50 | 80 | 100 | undefined;
   const usageRecordingStatuses: UsageRecordingStatus[] = [];
   let cacheHitCount = 0;
-  let isCacheAvailable = estimate.isCacheAvailable;
+  let isCacheAvailable = initialEstimate.isCacheAvailable;
 
   for (const [batchIndex, blocks] of batches.entries()) {
     if (!isActiveRun(run.id)) {
       return;
     }
 
-    updatePageStatus(
-      `正在翻译第 ${batchIndex + 1}/${batches.length} 批（共 ${candidates.length} 段）；${estimateMessage}`,
-      'progress',
-    );
+    updatePageStatus(`正在翻译第 ${batchIndex + 1}/${batches.length} 批（共 ${candidates.length} 段）…`, 'progress');
 
-    const rawResponse: unknown = await browser.runtime.sendMessage({
-      type: 'TRANSLATE_BATCH',
-      request: {
-        sourceLanguage: 'auto',
-        targetLanguage,
-        forceRefresh: run.forceRefresh,
-        blocks,
-      },
-    } satisfies RuntimeMessage);
-
-    const response = TranslationBatchResponseSchema.safeParse(rawResponse);
-    if (!response.success) {
-      const operation = OperationResultSchema.safeParse(rawResponse);
-      throw new Error(
-        operation.success ? operation.data.message || '网页翻译失败' : '扩展返回的译文格式无效',
-      );
-    }
+    const response = await streamBatch({ sourceLanguage: run.sourceLanguage, targetLanguage, forceRefresh: run.forceRefresh, blocks }, styledCandidates, run);
 
     if (!isActiveRun(run.id)) {
       return;
     }
+    // Reconcile the complete batch after the stream closes. This is idempotent
+    // and covers providers that emit a validated envelope only at completion.
+    renderTranslations(styledCandidates, response.blocks, run.targetLanguage);
 
-    recordedAmount += response.data.cost.amount;
-    latestTodayAmount = response.data.cost.today.totalCost;
-    latestThreshold = response.data.cost.crossedThresholds.at(-1) || latestThreshold;
+    recordedAmount += response.cost.amount;
+    latestTodayAmount = response.cost.today.totalCost;
+    latestThreshold = response.cost.crossedThresholds.at(-1) || latestThreshold;
     usageRecordingStatuses.push({
-      usageKind: response.data.usage.kind,
-      isLedgerRecorded: response.data.cost.isLedgerRecorded,
+      usageKind: response.usage.kind,
+      isLedgerRecorded: response.cost.isLedgerRecorded,
     });
-    cacheHitCount += response.data.cache.hitCount;
-    isCacheAvailable &&= response.data.cache.isAvailable;
-    renderTranslations(styledCandidates, response.data.blocks, targetLanguage);
-    response.data.blocks.forEach(({ id }) => run.translatedIds.add(id));
+    cacheHitCount += response.cache.hitCount;
+    isCacheAvailable &&= response.cache.isAvailable;
+    response.blocks.forEach(({ id }) => run.translatedIds.add(id));
   }
 
+  const estimate = summarizePageEstimates(await estimatesPromise, candidates.length);
+  const { currency, isPriceConfigured } = estimate;
   const costMessage = isPriceConfigured
     ? `；本次${formatMoneyAmount(recordedAmount, currency)}，今日${formatMoneyAmount(latestTodayAmount, currency)}`
     : '';
@@ -330,6 +354,55 @@ async function translateCandidates(
   );
 }
 
+async function streamBatch(
+  request: { sourceLanguage: string; targetLanguage: string; forceRefresh: boolean; blocks: TranslationBlock[] },
+  styledCandidates: Array<TranslationBlock & { element: HTMLElement }>,
+  run: TranslationRun,
+  onBlock?: (block: import('@/src/core/contracts').TranslatedBlock) => void,
+): Promise<TranslationBatchResponse> {
+  const port = browser.runtime.connect({ name: 'textduet-translation-stream' });
+  activeStreamPorts.add(port);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      activeStreamPorts.delete(port);
+      callback();
+      window.setTimeout(() => port.disconnect(), 0);
+    };
+    port.onMessage.addListener((rawEvent: unknown) => {
+      try {
+        const event = parseTranslationStreamEvent(rawEvent);
+        if (event.type === 'TRANSLATION_BLOCK') {
+          run.translatedIds.add(event.block.id);
+          if (onBlock) onBlock(event.block);
+          else renderTranslations(styledCandidates, [event.block], run.targetLanguage);
+          return;
+        }
+        if (event.type === 'TRANSLATION_COMPLETE') {
+          // Some compatible endpoints buffer the JSON envelope until the
+          // final SSE event. Render any blocks not emitted incrementally so a
+          // completed batch can never finish with an empty page region.
+          if (!onBlock) {
+            renderTranslations(styledCandidates, event.response.blocks, run.targetLanguage);
+          }
+          finish(() => resolve(event.response));
+          return;
+        }
+        finish(() => reject(new Error(event.message)));
+      } catch (error) {
+        finish(() => reject(error));
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      activeStreamPorts.delete(port);
+      if (!settled) { settled = true; reject(new Error('流式翻译连接已断开')); }
+    });
+    port.postMessage({ type: 'TRANSLATE_BATCH_STREAM', request });
+  });
+}
+
 async function requestTranslationEstimate(
   blocks: TranslationBlock[],
   targetLanguage: string,
@@ -337,7 +410,7 @@ async function requestTranslationEstimate(
 ) {
   const rawResponse: unknown = await browser.runtime.sendMessage({
     type: 'ESTIMATE_TRANSLATION',
-    request: { sourceLanguage: 'auto', targetLanguage, forceRefresh, blocks },
+    request: { sourceLanguage: activeRun?.sourceLanguage || 'auto', targetLanguage, forceRefresh, blocks },
   } satisfies RuntimeMessage);
   const response = TranslationEstimateResponseSchema.safeParse(rawResponse);
   if (!response.success) {
@@ -355,6 +428,19 @@ function collectCandidates(): Array<TranslationBlock & { element: HTMLElement }>
     getText: getSourceText,
     siteRule: resolveSiteRule(window.location),
   });
+}
+
+function compareCandidatePriority(
+  left: TranslationBlock & { element: HTMLElement },
+  right: TranslationBlock & { element: HTMLElement },
+): number {
+  const viewportHeight = window.innerHeight || 800;
+  const leftRect = left.element.getBoundingClientRect();
+  const rightRect = right.element.getBoundingClientRect();
+  const leftVisible = leftRect.bottom > 0 && leftRect.top < viewportHeight;
+  const rightVisible = rightRect.bottom > 0 && rightRect.top < viewportHeight;
+  if (leftVisible !== rightVisible) return leftVisible ? -1 : 1;
+  return leftRect.top - rightRect.top;
 }
 
 function getElementId(element: HTMLElement): string {
@@ -383,10 +469,194 @@ function isActiveRun(runId: number): boolean {
   return activeRunId === runId && activeRun?.id === runId;
 }
 
+async function translateSelection(text: string, sourceLanguage: string, targetLanguage: string, translationColor?: string): Promise<void> {
+  const captured = getCapturedSelection();
+  const selectedText = captured?.text || '';
+  if (!selectedText || selectedText !== text.replace(/\s+/g, ' ').trim()) {
+    renderSelectionError('选中文本已变化，请重新选择');
+    return;
+  }
+  if (selectedText.length > 4_000) {
+    renderSelectionError('选区过长');
+    return;
+  }
+  const anchorElement = captured?.anchor;
+  if (!anchorElement || anchorElement.closest('code,pre,form,input,textarea,select,button,[contenteditable]:not([contenteditable="false"]),[hidden],[aria-hidden="true"]')) {
+    renderSelectionError('请选择正文段落中的文本');
+    return;
+  }
+  const block = { id: `textduet-selection-${Date.now()}`, text: selectedText };
+  try {
+    const response = await streamBatch(
+      { sourceLanguage, targetLanguage, forceRefresh: false, blocks: [block] },
+      [],
+      activeRun || createSelectionRun(targetLanguage),
+      (blockResult) => renderSelectionTranslation(text, blockResult, targetLanguage, translationColor),
+    );
+    if (!response.blocks[0]) throw new Error('模型没有返回译文');
+  } catch (error) {
+    renderSelectionError(normalizeSelectionError(error));
+  }
+}
+
+function createSelectionRun(targetLanguage: string): TranslationRun {
+  return {
+    id: 0, sourceLanguage: 'auto', targetLanguage, displayMode: 'bilingual',
+    translationColor: DEFAULT_TRANSLATION_COLOR, selectionQuickAction: false, forceRefresh: false, observer: null,
+    scanTimer: undefined, isProcessing: false, hasPendingScan: false,
+    translatedIds: new Set(), failedIds: new Set(), seenIds: new Set(), failedBatchCount: 0,
+  };
+}
+
+let selectionQuickActionButton: HTMLButtonElement | null = null;
+let selectionQuickActionTimer: number | undefined;
+let selectionQuickActionCleanup: (() => void) | null = null;
+let selectionQuickActionText = '';
+let selectionQuickActionHiddenUntil = 0;
+let selectionQuickActionRetryCount = 0;
+
+function installSelectionQuickAction(run: TranslationRun): void {
+  removeSelectionQuickAction();
+  if (!run.selectionQuickAction) return;
+  const listener = () => {
+    if (selectionQuickActionTimer !== undefined) window.clearTimeout(selectionQuickActionTimer);
+    selectionQuickActionTimer = window.setTimeout(() => {
+      selectionQuickActionRetryCount = 0;
+      updateSelectionQuickAction(run);
+    }, 60);
+  };
+  document.addEventListener('selectionchange', listener);
+  document.addEventListener('pointerup', listener, true);
+  document.addEventListener('mouseup', listener, true);
+  document.addEventListener('touchend', listener, true);
+  window.addEventListener('selectionchange', listener);
+  window.addEventListener('focus', listener);
+  document.addEventListener('visibilitychange', listener);
+  selectionQuickActionCleanup = () => {
+    document.removeEventListener('selectionchange', listener);
+    document.removeEventListener('pointerup', listener, true);
+    document.removeEventListener('mouseup', listener, true);
+    document.removeEventListener('touchend', listener, true);
+    window.removeEventListener('selectionchange', listener);
+    window.removeEventListener('focus', listener);
+    document.removeEventListener('visibilitychange', listener);
+  };
+  // The setting can be enabled after the user already selected text. Recheck
+  // on the next frame instead of requiring another selection gesture.
+  window.requestAnimationFrame(() => updateSelectionQuickAction(run));
+}
+
+function updateSelectionQuickAction(run: TranslationRun): void {
+  if (run.id !== 0 && !isActiveRun(run.id)) return;
+  if (performance.now() < selectionQuickActionHiddenUntil) return;
+  const selection = window.getSelection();
+  const text = normalizeSelectionText(selection?.toString() || '');
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  const anchor = text && range ? captureSelectionAnchor() : null;
+  if (!text || text.length > 4_000 || !range || !anchor || anchor.closest('code,pre,form,input,textarea,select,button,[contenteditable]:not([contenteditable=\"false\"]),[hidden],[aria-hidden=\"true\"]')) {
+    hideSelectionQuickAction(false);
+    return;
+  }
+  const rect = [...range.getClientRects()].at(-1) || range.getBoundingClientRect();
+  if (!rect.width && !rect.height) {
+    if (selectionQuickActionRetryCount < 3) {
+      selectionQuickActionRetryCount += 1;
+      window.setTimeout(() => updateSelectionQuickAction(run), 50);
+    }
+    return;
+  }
+  selectionQuickActionText = text;
+  if (!selectionQuickActionButton) {
+    selectionQuickActionButton = document.createElement('button');
+    selectionQuickActionButton.type = 'button';
+    selectionQuickActionButton.className = 'textduet-selection-quick-action';
+    selectionQuickActionButton.setAttribute('aria-label', '翻译选中文本');
+    selectionQuickActionButton.title = '翻译选中文本';
+    selectionQuickActionButton.textContent = '文A';
+    selectionQuickActionButton.addEventListener('pointerdown', (event) => event.preventDefault());
+    selectionQuickActionButton.addEventListener('click', () => {
+      captureSelectionAnchor();
+      const currentText = selectionQuickActionText;
+      if (currentText) void browser.runtime.sendMessage({ type: 'REQUEST_SELECTION_TRANSLATION', text: currentText });
+      hideSelectionQuickAction(true);
+    });
+    document.documentElement.append(selectionQuickActionButton);
+  }
+  // The injected stylesheet deliberately uses !important to survive arbitrary
+  // site CSS, so the dynamic coordinates need the same priority.
+  const placement = resolveSelectionQuickActionPosition(rect);
+  selectionQuickActionButton.style.setProperty('left', `${placement.left}px`, 'important');
+  selectionQuickActionButton.style.setProperty('top', `${placement.top}px`, 'important');
+}
+
+function resolveSelectionQuickActionPosition(rect: DOMRect): { left: number; top: number } {
+  const buttonSize = 30;
+  const gap = 10;
+  const viewportPadding = 6;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const centeredTop = rect.top + Math.max(0, (rect.height - buttonSize) / 2);
+
+  // Keep the control outside the selected range whenever there is horizontal
+  // room, so it never obscures the text the user is reviewing.
+  if (rect.right + gap + buttonSize <= viewportWidth - viewportPadding) {
+    return { left: rect.right + gap, top: clamp(centeredTop, viewportPadding, viewportHeight - buttonSize - viewportPadding) };
+  }
+  if (rect.left - gap - buttonSize >= viewportPadding) {
+    return { left: rect.left - gap - buttonSize, top: clamp(centeredTop, viewportPadding, viewportHeight - buttonSize - viewportPadding) };
+  }
+  if (rect.bottom + gap + buttonSize <= viewportHeight - viewportPadding) {
+    return { left: clamp(rect.right - buttonSize, viewportPadding, viewportWidth - buttonSize - viewportPadding), top: rect.bottom + gap };
+  }
+  return {
+    left: clamp(rect.right - buttonSize, viewportPadding, viewportWidth - buttonSize - viewportPadding),
+    top: clamp(rect.top - gap - buttonSize, viewportPadding, viewportHeight - buttonSize - viewportPadding),
+  };
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function removeSelectionQuickAction(): void {
+  if (selectionQuickActionTimer !== undefined) window.clearTimeout(selectionQuickActionTimer);
+  selectionQuickActionTimer = undefined;
+  selectionQuickActionText = '';
+  selectionQuickActionRetryCount = 0;
+  selectionQuickActionHiddenUntil = 0;
+  selectionQuickActionCleanup?.();
+  selectionQuickActionCleanup = null;
+  selectionQuickActionButton?.remove();
+  selectionQuickActionButton = null;
+}
+
+function hideSelectionQuickAction(suppressUntilNextSelection = false): void {
+  selectionQuickActionHiddenUntil = suppressUntilNextSelection
+    ? performance.now() + 700
+    : 0;
+  if (selectionQuickActionTimer !== undefined) window.clearTimeout(selectionQuickActionTimer);
+  selectionQuickActionTimer = undefined;
+  selectionQuickActionButton?.remove();
+  selectionQuickActionButton = null;
+}
+
+function normalizeSelectionText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 function parseRuntimeMessageSafely(value: unknown): RuntimeMessage | null {
   try {
     return parseRuntimeMessage(value);
   } catch {
     return null;
   }
+}
+
+function normalizeSelectionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (/api key|密钥|认证/i.test(message)) return '请先配置 API Key';
+  if (/过长|4000|长度/i.test(message)) return '选区过长';
+  if (/格式|json|段落/i.test(message)) return '模型返回格式无效';
+  if (/余额|限流|不可用/i.test(message)) return message.slice(0, 80);
+  return '选区翻译失败';
 }

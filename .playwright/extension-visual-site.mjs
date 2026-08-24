@@ -96,17 +96,15 @@ try {
   assert.deepEqual(startResult, { ok: true, message: '已开始翻译当前网页' });
 
   await page.waitForFunction(() => {
-    const state = document.querySelector('#textduet-status')?.dataset.textduetState;
-    return state === 'complete' || state === 'error';
+    return document.querySelectorAll('.textduet-translation').length > 0;
   }, undefined, { timeout: 600_000 });
 
   const result = await page.evaluate(() => {
-    const status = document.querySelector('#textduet-status');
     const translations = Array.from(document.querySelectorAll('.textduet-translation'));
     const excluded = 'code, pre, textarea, input, select, button, form, nav, footer, menu, [contenteditable]:not([contenteditable="false"]), [aria-hidden="true"], [hidden], [inert], [role="button"], [role="navigation"], [role="menu"]';
     return {
-      state: status?.dataset.textduetState || '',
-      statusMessage: status?.textContent || '',
+      state: translations.length > 0 ? 'complete' : 'empty',
+      statusMessage: '',
       translatedCount: translations.length,
       pureTextCount: translations.filter((translation) =>
         translation.childNodes.length === 1

@@ -53,11 +53,11 @@ TD-2026-014 已加入保守的本地规则层 `src/translator/site-rules.ts`：
 
 | 规则 | 覆盖主机 | 根节点策略 | 额外排除 |
 | --- | --- | --- | --- |
-| `github` | `github.com` 及子域 | `main`、README 容器 | 页头、仓库容器头部 |
-| `framework-docs` | React、Vue、Svelte、Vite、Astro 官方文档 | `main`、`article`、`.VPDoc` | 页头、导航、侧栏、目录 |
-| `overseas-community` | DEV、Lobsters | `main`、内容容器 | 页头、导航、侧栏 |
-| `chroma-research` | Chroma Research 文章 | `.markdown-content`、`article`；正文目录直接链接单独加入候选 | 页头和正文根外导航 |
-| `creative-design` | Smashing Magazine、Typewolf、One Page Love | `main` | 页头、导航、侧栏、导航角色 |
+| `github` | `github.com` 及子域 | `main`、README 容器 | 仓库容器头部、侧栏和交互控件 |
+| `framework-docs` | React、Vue、Svelte、Vite、Astro 官方文档 | `main`、`article`、`.VPDoc` | 侧栏、目录和交互控件 |
+| `overseas-community` | DEV、Lobsters | `main`、内容容器 | 侧栏和交互控件 |
+| `chroma-research` | Chroma Research 文章 | `.markdown-content`、`article`；正文目录直接链接单独加入候选 | 侧栏和交互控件 |
+| `creative-design` | Smashing Magazine、Typewolf、One Page Love | `main` | 侧栏和交互控件 |
 
 规则只在用户主动启动的当前页面会话中使用；未知主机、规则根节点不存在或选择器异常时回退通用提取。规则不请求网络、不读取 API Key、不发送规则标识给模型，也不改变现有 Manifest 权限。
 
@@ -81,11 +81,26 @@ P1 网站失败需要记录已知问题，但不阻塞首个 Alpha；P2 只收�
 
 ## 4. 仓库内验收语料
 
+## TD-2026-019 增补验收
+
+- 页面不出现 `#textduet-status` 或其他右下角全局状态浮层；Popup 仍能看到脱敏状态消息。
+- Mock SSE 延迟返回多个段落时，第一个译文必须早于最终完成事件出现；普通 JSON 响应只发起一次请求并正常回退。
+- 页面滚动或动态插入的新段落在当前批次结束后进入下一批，停止后不再发起新批次。
+- Popup/Options 的语言双选择框在桌面和窄屏不溢出，目标语言“跟随系统”显示解析后的语言族。
+- 公开原创 fixture 中选区右键菜单显示“翻译选中文本”，译文插入选区起始段落之后；重复选区替换旧结果，代码/表单/超长选区显示短暂标准化错误。
+
+## TD-2026-020 增补验收
+
+- 批次状态显示为“已完成”时，当前批次的每个已校验译文块都已存在于对应源节点之后；兼容服务端延迟发送完整 JSON envelope 的情况。
+- 页头品牌旁的正文链接、header tab/navigation 链接和 footer 文本链接/段落可进入候选；按钮、表单、代码、隐藏区和侧栏仍保持排除。
+- 选区结束后连续触发 selectionchange、pointerup、mouseup 或 touchend，快捷入口在稳定选区上出现；滚动或页面 CSS 不会改变其视口定位，点击后不重复触发。
+- 快捷入口是 30px 高对比暖色按钮，使用“文A”双语 glyph、无远程资源和无新增依赖。
+
 合成页面位于 `tests/fixtures/pages/`：
 
 | 文件 | 覆盖内容 | 关键断言 |
 | --- | --- | --- |
-| `article-basic.html` | 标题、段落、列表、引用、图注、表格、相近前景/背景色 | 正文全部入选，导航与页脚排除；低对比偏好色回退原文色 |
+| `article-basic.html` | 标题、段落、列表、引用、图注、表格、页头/页脚 | 正文与可读壳层文本入选；按钮、表单排除；低对比偏好色回退原文色 |
 | `technical-docs.html` | API 文档、行内代码、代码块、提示框、公式占位 | 普通说明可译，代码与公式保持原样 |
 | `discussion-dynamic.html` | 帖子、嵌套评论、隐藏评论、动态追加模板 | 可见评论入选，隐藏内容排除，新增内容可去重 |
 | `dynamic-virtualized.html` | 虚拟列表、复用节点、原地改写、body 替换 | 失效旧源文本快照，活动会话继续处理，停止后不再翻译 |

@@ -79,6 +79,8 @@ Options 负责低频配置：
 
 ## 7. UI 变更验证
 
+页面开发的详细布局、组件、响应式和视觉令牌标准维护在 [`docs/UI-DEVELOPMENT-STANDARD.zh-CN.md`](../docs/UI-DEVELOPMENT-STANDARD.zh-CN.md)。涉及 Popup、Options 或扩展页面的改动必须同时遵守该文档；若本文件与页面标准冲突，以本文件中的安全、可访问性和验证要求为准。
+
 UI 任务完成前必须：
 
 1. 运行 typecheck、测试和生产构建。

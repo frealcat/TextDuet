@@ -5,13 +5,16 @@ import type {
 } from '@/src/core/contracts';
 import { parseConfiguredProviderSettings, TranslatedBlockSchema } from '@/src/core/schemas';
 import { resolveSystemPrompt } from '@/src/core/translation-prompt';
+import { resolveTargetLanguage } from '@/src/core/defaults';
 import * as z from 'zod/mini';
 import { fetchWithReliability } from './fetch-with-reliability';
+import { ProviderStreamError } from './types';
 import type {
   ProviderRequestOptions,
   ProviderTranslationResult,
   TranslationProvider,
 } from './types';
+import { extractCompletedBlocks, parseSsePayload, splitSseLines } from './stream-parser';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -85,7 +88,7 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
           messages: [
             {
               role: 'system',
-              content: resolveSystemPrompt(settings),
+              content: resolveSystemPrompt(settings, request),
             },
             {
               role: 'user',
@@ -132,6 +135,122 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
     };
   }
 
+  async translateStream(
+    settings: ProviderSettings,
+    apiKey: string,
+    request: TranslationBatchRequest,
+    options: import('./types').ProviderStreamOptions = {},
+  ): Promise<import('./types').ProviderTranslationStreamResult> {
+    validateConfiguration(settings, apiKey);
+    const response = await fetchWithReliability(
+      resolveChatCompletionsUrl(settings.baseUrl),
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: settings.model,
+          temperature: 0.1,
+          stream: true,
+          stream_options: { include_usage: true },
+          ...resolveProviderSpecificRequestOptions(settings),
+          messages: [
+            { role: 'system', content: resolveSystemPrompt(settings, request) },
+            { role: 'user', content: JSON.stringify(request) },
+          ],
+        }),
+      },
+      {
+        timeoutMs: this.#timeoutMs,
+        maxAttempts: this.#maxAttempts,
+        retryBaseDelayMs: this.#retryBaseDelayMs,
+        signal: options.signal,
+      },
+    );
+    if (!response.ok) throw new Error(describeHttpError(response.status));
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('text/event-stream')) {
+      const rawPayload: unknown = await response.json().catch(() => ({}));
+      const parsed = ChatCompletionResponseSchema.safeParse(rawPayload);
+      if (!parsed.success) throw new Error('模型接口返回的响应格式不正确');
+      const content = parsed.data.choices?.[0]?.message?.content;
+      if (!content) throw new Error('模型没有返回可用的翻译内容');
+      const blocks = parseTranslatedBlocks(content, request);
+      blocks.forEach((block) => options.onBlock?.(block));
+      return {
+        blocks,
+        model: parsed.data.model || settings.model,
+        usage: parsed.data.usage ? { inputTokens: parsed.data.usage.prompt_tokens, outputTokens: parsed.data.usage.completion_tokens, kind: 'actual' } : undefined,
+        isStreaming: false,
+      };
+    }
+    if (!response.body) throw new Error('模型服务未返回可读取的流');
+    const reader = response.body.getReader();
+    const cancelStream = () => { void reader.cancel(); };
+    options.signal?.addEventListener('abort', cancelStream, { once: true });
+    const decoder = new TextDecoder();
+    const expectedIds = new Set(request.blocks.map((block) => block.id));
+    const emittedIds = new Set<string>();
+    let content = '';
+    let buffer = '';
+    let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
+    let model = settings.model;
+    let streamDone = false;
+    const consumeEvent = (event: string) => {
+      const payload = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
+      if (!payload) return;
+      const parsed = (() => {
+        try {
+          return parseSsePayload(payload);
+        } catch {
+          throw new Error('模型流式响应格式无效');
+        }
+      })();
+      if (parsed.done) { streamDone = true; return; }
+      if (parsed.model) model = parsed.model;
+      if (parsed.content) {
+        content += parsed.content;
+        for (const block of extractCompletedBlocks(content, expectedIds, emittedIds)) {
+          emittedIds.add(block.id);
+          options.onBlock?.(block);
+        }
+      }
+      if (parsed.usage) usage = parsed.usage;
+    };
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+        const split = splitSseLines(buffer);
+        buffer = split.remainder;
+        split.events.forEach(consumeEvent);
+        if (chunk.done) break;
+      }
+      if (buffer.trim()) consumeEvent(buffer);
+      if (options.signal?.aborted) throw new Error('已停止翻译');
+      if (!streamDone) throw new Error('模型流式响应未完整结束');
+      const blocks = parseTranslatedBlocks(content, request);
+      return {
+        blocks,
+        model,
+        usage: usage ? { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, kind: 'actual' } : undefined,
+        isStreaming: true,
+      };
+    } catch (error) {
+      if (error instanceof ProviderStreamError) throw error;
+      const safeMessage = options.signal?.aborted || (error instanceof Error && error.message === '已停止翻译')
+        ? '已停止翻译'
+        : error instanceof Error && error.message.includes('未完整结束')
+          ? error.message
+          : '模型流式响应格式无效';
+      throw new ProviderStreamError(
+        safeMessage,
+        usage ? { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, kind: 'actual' } : undefined,
+      );
+    } finally {
+      options.signal?.removeEventListener('abort', cancelStream);
+    }
+  }
+
   async testConnection(
     settings: ProviderSettings,
     apiKey: string,
@@ -142,7 +261,7 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
       apiKey,
       {
         sourceLanguage: 'en',
-        targetLanguage: settings.targetLanguage,
+        targetLanguage: resolveTargetLanguage(settings.targetLanguage),
         blocks: [{ id: 'connection-test', text: 'Connection successful.' }],
       },
       options,

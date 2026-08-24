@@ -26,7 +26,10 @@ export function renderTranslations(
     if (sourceBlock.styleContext) {
       translatedElement.style.setProperty(
         'color',
-        resolveReadableTranslationColor(sourceBlock.styleContext, translation.colorPreference),
+        // A model response must never make adjacent translations use different
+        // configured colors. The deterministic guard only falls back when the
+        // user-selected color is genuinely unreadable on this block.
+        resolveReadableTranslationColor(sourceBlock.styleContext, 'preferred'),
         'important',
       );
     } else {

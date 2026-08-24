@@ -7,7 +7,8 @@ import type {
   RuntimeMessage,
   TranslationDisplayMode,
 } from '@/src/core/contracts';
-import { SUPPORTED_TARGET_LANGUAGES } from '@/src/core/defaults';
+import { DEFAULT_SOURCE_LANGUAGE, DEFAULT_TARGET_LANGUAGE, resolveSystemLanguage } from '@/src/core/defaults';
+import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
 import {
   parseCostDashboard,
   parseOperationResult,
@@ -17,7 +18,8 @@ import {
 
 export function App() {
   const [settings, setSettings] = useState<PublicProviderSettings | null>(null);
-  const [targetLanguage, setTargetLanguage] = useState('zh-CN');
+  const [sourceLanguage, setSourceLanguage] = useState(DEFAULT_SOURCE_LANGUAGE);
+  const [targetLanguage, setTargetLanguage] = useState(DEFAULT_TARGET_LANGUAGE);
   const [costDashboard, setCostDashboard] = useState<CostDashboard | null>(null);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,8 +35,16 @@ export function App() {
       .then((value) => {
         const nextSettings = parsePublicProviderSettings(value);
         setSettings(nextSettings);
+        setSourceLanguage(nextSettings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE);
         setTargetLanguage(nextSettings.targetLanguage);
         setDisplayMode(nextSettings.displayMode);
+        void browser.runtime.sendMessage({
+          type: 'CONFIGURE_SELECTION_QUICK_ACTION',
+          enabled: nextSettings.selectionQuickAction === true,
+          sourceLanguage: nextSettings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE,
+          targetLanguage: nextSettings.targetLanguage,
+          translationColor: nextSettings.translationColor,
+        } satisfies RuntimeMessage).catch(() => undefined);
       })
       .catch(() => setStatus('无法读取扩展配置'));
     browser.runtime
@@ -70,6 +80,10 @@ export function App() {
     };
   }, [translationState.state]);
 
+  useEffect(() => {
+    if (translationState.message) setStatus(translationState.message);
+  }, [translationState.message]);
+
   async function translate(): Promise<void> {
     if (!settings?.hasApiKey || !settings.model) {
       await browser.runtime.openOptionsPage();
@@ -81,7 +95,8 @@ export function App() {
     try {
       const rawResult: unknown = await browser.runtime.sendMessage({
         type: 'TRANSLATE_ACTIVE_TAB',
-        targetLanguage,
+        sourceLanguage,
+        targetLanguage: targetLanguage === DEFAULT_TARGET_LANGUAGE ? resolveSystemLanguage() : targetLanguage,
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
       setStatus(result.message || (result.ok ? '翻译已开始' : '翻译失败'));
@@ -90,6 +105,19 @@ export function App() {
       setStatus(error instanceof Error ? error.message : '翻译失败');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function changeLanguage(nextSourceLanguage: string, nextTargetLanguage: string): Promise<void> {
+    setSourceLanguage(nextSourceLanguage);
+    setTargetLanguage(nextTargetLanguage);
+    try {
+      const result = parseOperationResult(await browser.runtime.sendMessage({
+        type: 'SET_LANGUAGE_PREFERENCES', sourceLanguage: nextSourceLanguage, targetLanguage: nextTargetLanguage,
+      } satisfies RuntimeMessage));
+      if (!result.ok) throw new Error(result.message || '语言偏好保存失败');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '语言偏好保存失败');
     }
   }
 
@@ -134,6 +162,27 @@ export function App() {
     }
   }
 
+  async function changeSelectionQuickAction(enabled: boolean): Promise<void> {
+    if (!settings) return;
+    setSettings({ ...settings, selectionQuickAction: enabled });
+    try {
+      const result = parseOperationResult(await browser.runtime.sendMessage({
+        type: 'SET_SELECTION_QUICK_ACTION', enabled,
+      } satisfies RuntimeMessage));
+      if (!result.ok) throw new Error(result.message || '快捷翻译设置失败');
+      await browser.runtime.sendMessage({
+        type: 'CONFIGURE_SELECTION_QUICK_ACTION',
+        enabled,
+        sourceLanguage,
+        targetLanguage,
+        translationColor: settings.translationColor,
+      } satisfies RuntimeMessage);
+    } catch (error) {
+      setSettings((current) => current ? { ...current, selectionQuickAction: !enabled } : current);
+      setStatus(error instanceof Error ? error.message : '快捷翻译设置失败');
+    }
+  }
+
   async function changeModel(model: string): Promise<void> {
     if (!settings) return;
     const previousModel = settings.model;
@@ -170,18 +219,7 @@ export function App() {
       </header>
 
       <section className="control-card" aria-label="网页翻译控制">
-        <label htmlFor="target-language">翻译为</label>
-        <select
-          id="target-language"
-          value={targetLanguage}
-          onChange={(event) => setTargetLanguage(event.target.value)}
-        >
-          {SUPPORTED_TARGET_LANGUAGES.map((language) => (
-            <option key={language.value} value={language.value}>
-              {language.label}
-            </option>
-          ))}
-        </select>
+        <LanguagePairPicker sourceLanguage={sourceLanguage} targetLanguage={targetLanguage} onChange={(source, target) => void changeLanguage(source, target)} compact />
 
         {modelOptions.length > 1 && (
           <label>
@@ -235,6 +273,10 @@ export function App() {
             译文
           </button>
         </div>
+        <label className="quick-action-toggle">
+          <input type="checkbox" checked={settings?.selectionQuickAction === true} onChange={(event) => void changeSelectionQuickAction(event.target.checked)} />
+          <span>选区快捷翻译图标</span>
+        </label>
       </section>
 
       <section className="cost-card" aria-label="今日模型用量">

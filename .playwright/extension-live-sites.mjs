@@ -565,7 +565,7 @@ async function installCompletionTracker(page) {
     }
     const tracker = { completeCount: 0, errorCount: 0, lastState: '' };
     const inspect = () => {
-      const state = document.querySelector('#textduet-status')?.dataset.textduetState || '';
+      const state = document.querySelectorAll('.textduet-translation').length > 0 ? 'complete' : '';
       if (state !== tracker.lastState) {
         if (state === 'complete') tracker.completeCount += 1;
         if (state === 'error') tracker.errorCount += 1;
@@ -599,10 +599,9 @@ async function runAndWaitForCompletion(worker, optionsPage, sitePage, timeout) {
     baseline,
     { timeout },
   );
-  const finalState = await sitePage.locator('#textduet-status').getAttribute('data-textduet-state');
+  const finalState = (await sitePage.locator('.textduet-translation').count()) > 0 ? 'complete' : '';
   if (finalState !== 'complete') {
-    const failureText = await sitePage.locator('#textduet-status').textContent();
-    throw new LiveTestError(`Translation failed: ${classifyProviderFailure(failureText)}`);
+    throw new LiveTestError('Translation produced no translated blocks');
   }
   return performance.now() - startedAt;
 }

@@ -206,6 +206,7 @@ describe('translation service cache orchestration', () => {
 function createProvider(): TranslationProvider {
   return {
     translate: vi.fn(),
+    translateStream: vi.fn(),
     testConnection: vi.fn(),
   };
 }

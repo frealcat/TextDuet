@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const playwrightModule = await import(process.env.PLAYWRIGHT_ENTRY);
-const { chromium } = playwrightModule.default ?? playwrightModule;
+  const { chromium } = playwrightModule.default ?? playwrightModule;
 const builtExtensionDir = process.env.EXTENSION_DIR || resolve('.output/chrome-mv3');
 const chromeExecutable = process.env.CHROME_EXECUTABLE;
 const headless = process.env.PLAYWRIGHT_HEADLESS !== 'false';
@@ -452,7 +452,7 @@ async function installCompletionTracker(page) {
   await page.evaluate(() => {
     const tracker = { completeCount: 0, errorCount: 0, lastState: '' };
     const inspect = () => {
-      const state = document.querySelector('#textduet-status')?.dataset.textduetState || '';
+      const state = document.querySelectorAll('.textduet-translation').length > 0 ? 'complete' : '';
       if (state === tracker.lastState) return;
       if (state === 'complete') tracker.completeCount += 1;
       if (state === 'error') tracker.errorCount += 1;
@@ -483,10 +483,7 @@ async function runAndWaitForCompletion(worker, optionsPage, sitePage) {
     return (tracker?.completeCount || 0) > previous.complete ||
       (tracker?.errorCount || 0) > previous.error;
   }, baseline, { timeout: 60_000 });
-  assert.equal(
-    await sitePage.locator('#textduet-status').getAttribute('data-textduet-state'),
-    'complete',
-  );
+  assert.ok(await sitePage.locator('.textduet-translation').count() > 0);
   return performance.now() - startedAt;
 }
 

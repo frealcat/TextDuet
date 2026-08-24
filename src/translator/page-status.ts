@@ -1,10 +1,8 @@
 export const TRANSLATION_CLASS = 'textduet-translation';
 export const SOURCE_CLASS = 'textduet-source';
 
-const STATUS_ID = 'textduet-status';
-const STATUS_HIDE_DELAY_MS = 3_500;
-let statusHideTimer: number | undefined;
 let lastKnownPageStatusState: PageStatusState | 'idle' = 'idle';
+let lastStatusMessage = '';
 
 export type PageStatusState = 'progress' | 'complete' | 'stopped' | 'empty' | 'error';
 
@@ -32,24 +30,34 @@ export function injectPageStyles(): void {
     html[data-textduet-display-mode="source-only"] .${TRANSLATION_CLASS} {
       display: none !important;
     }
-    #${STATUS_ID} {
+    .textduet-selection-quick-action {
+      all: initial !important;
       position: fixed !important;
-      right: 18px !important;
-      bottom: 18px !important;
-      z-index: 2147483647 !important;
-      max-width: min(390px, calc(100vw - 36px)) !important;
-      padding: 10px 13px !important;
-      border: 1px solid rgb(156 94 46 / 28%) !important;
-      border-radius: 10px !important;
-      color: #232018 !important;
-      background: #faf8f3 !important;
-      box-shadow: 0 8px 28px rgb(35 32 24 / 16%) !important;
-      font: 13px/1.45 ui-sans-serif, system-ui, sans-serif !important;
+      z-index: 2147483646 !important;
+      width: 30px !important;
+      height: 30px !important;
+      min-width: 30px !important;
+      padding: 0 !important;
+      border: 1px solid rgb(255 255 255 / 70%) !important;
+      border-radius: 8px !important;
+      color: #fff !important;
+      background: #9c5e2e !important;
+      box-shadow: 0 4px 12px rgb(0 0 0 / 24%) !important;
+      font: 700 12px/1 system-ui, sans-serif !important;
+      letter-spacing: 0 !important;
+      text-align: center !important;
+      text-shadow: 0 1px 1px rgb(0 0 0 / 22%) !important;
+      display: grid !important;
+      place-items: center !important;
+      user-select: none !important;
+      cursor: pointer !important;
     }
-    #${STATUS_ID}[data-textduet-state="error"] {
-      border-color: #b54b4b !important;
-      color: #7e2929 !important;
-      background: #fff8f7 !important;
+    .textduet-selection-quick-action:hover { background: #7d4b24 !important; }
+    .textduet-selection-translation {
+      display: block !important;
+      margin-top: 0.35em !important;
+      font: inherit !important;
+      line-height: inherit !important;
     }
   `;
   (document.head || document.documentElement).append(style);
@@ -57,28 +65,7 @@ export function injectPageStyles(): void {
 
 export function updatePageStatus(message: string, state: PageStatusState): void {
   lastKnownPageStatusState = state;
-  if (statusHideTimer !== undefined) {
-    window.clearTimeout(statusHideTimer);
-    statusHideTimer = undefined;
-  }
-  let status = document.getElementById(STATUS_ID);
-  if (!status) {
-    status = document.createElement('aside');
-    status.id = STATUS_ID;
-    status.setAttribute('role', 'status');
-    status.setAttribute('aria-live', 'polite');
-    (document.body || document.documentElement).append(status);
-  }
-
-  status.dataset.textduetState = state;
-  status.textContent = `TextDuet · ${message}`;
-  if (state === 'complete' || state === 'stopped') {
-    const currentStatus = status;
-    statusHideTimer = window.setTimeout(() => {
-      currentStatus.remove();
-      statusHideTimer = undefined;
-    }, STATUS_HIDE_DELAY_MS);
-  }
+  lastStatusMessage = message.slice(0, 2_000);
 }
 
 export function setTranslationDisplayMode(mode: 'bilingual' | 'source-only' | 'translated-only'): void {
@@ -89,6 +76,6 @@ export function setTranslationColor(color: string): void {
   document.documentElement.style.setProperty('--textduet-translation-color', color);
 }
 
-export function getPageTranslationState(): { state: PageStatusState | 'idle'; hasRun: boolean } {
-  return { state: lastKnownPageStatusState, hasRun: lastKnownPageStatusState !== 'idle' };
+export function getPageTranslationState(): { state: PageStatusState | 'idle'; hasRun: boolean; message: string } {
+  return { state: lastKnownPageStatusState, hasRun: lastKnownPageStatusState !== 'idle', message: lastStatusMessage };
 }

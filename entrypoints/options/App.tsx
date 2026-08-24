@@ -5,6 +5,9 @@ import {
   DEFAULT_PROVIDER_SETTINGS,
   DEFAULT_TRANSLATION_COLOR,
   PROVIDER_PRESETS,
+  DEFAULT_SOURCE_LANGUAGE,
+  DEFAULT_TARGET_LANGUAGE,
+  SUPPORTED_SOURCE_LANGUAGES,
   SUPPORTED_TARGET_LANGUAGES,
 } from '@/src/core/defaults';
 import { parseOperationResult, parsePublicProviderSettings } from '@/src/core/schemas';
@@ -15,6 +18,7 @@ import { UsageDashboardCard } from './UsageDashboardCard';
 import { CompatibilityDiagnosticsCard } from './CompatibilityDiagnosticsCard';
 import { TranslationAppearanceControls } from './TranslationAppearanceControls';
 import { ModelTagInput } from './ModelTagInput';
+import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
 
 export function App() {
   const [settings, setSettings] = useState<ProviderSettings>(DEFAULT_PROVIDER_SETTINGS);
@@ -35,6 +39,7 @@ export function App() {
           ...providerSettings,
           models: normalizeModelList(providerSettings.models, providerSettings.model),
           translationColor: providerSettings.translationColor || DEFAULT_TRANSLATION_COLOR,
+          sourceLanguage: providerSettings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE,
         });
         setHasSavedApiKey(hasApiKey);
       })
@@ -59,6 +64,7 @@ export function App() {
         model: settings.model.trim(),
         models: normalizeModelList(settings.models, settings.model),
         translationColor: (settings.translationColor || DEFAULT_TRANSLATION_COLOR).trim(),
+        selectionQuickAction: settings.selectionQuickAction === true,
       };
       const originPattern = toOriginPattern(settings.baseUrl);
       const granted = await browser.permissions.request({ origins: [originPattern] });
@@ -81,6 +87,13 @@ export function App() {
       setSettings(normalizedSettings);
       setApiKey('');
       setConfigurationRevision((current) => current + 1);
+      await browser.runtime.sendMessage({
+        type: 'CONFIGURE_SELECTION_QUICK_ACTION',
+        enabled: normalizedSettings.selectionQuickAction === true,
+        sourceLanguage: normalizedSettings.sourceLanguage,
+        targetLanguage: normalizedSettings.targetLanguage,
+        translationColor: normalizedSettings.translationColor,
+      } satisfies RuntimeMessage).catch(() => undefined);
 
       if (testAfterSave) {
         setStatus('正在连接模型…');
@@ -195,19 +208,11 @@ export function App() {
           />
         </fieldset>
 
-        <label className="select-field">
-          <span>默认目标语言</span>
-          <select
-            value={settings.targetLanguage}
-            onChange={(event) => update('targetLanguage', event.target.value)}
-          >
-            {SUPPORTED_TARGET_LANGUAGES.map((language) => (
-              <option key={language.value} value={language.value}>
-                {language.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LanguagePairPicker
+          sourceLanguage={settings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE}
+          targetLanguage={settings.targetLanguage}
+          onChange={(source, target) => setSettings((current) => ({ ...current, sourceLanguage: source, targetLanguage: target }))}
+        />
 
         <TranslationAppearanceControls
           displayMode={settings.displayMode}
@@ -216,6 +221,16 @@ export function App() {
           onDisplayModeChange={(value) => update('displayMode', value)}
           onTranslationColorChange={(value) => update('translationColor', value)}
         />
+
+        <label className="quick-action-toggle">
+          <input
+            type="checkbox"
+            checked={settings.selectionQuickAction === true}
+            onChange={(event) => update('selectionQuickAction', event.target.checked)}
+          />
+          <span>选中文字后显示快捷翻译图标</span>
+          <small>关闭后仍可通过右键菜单翻译选区。</small>
+        </label>
       </section>
 
       <section className="settings-card" aria-labelledby="prompt-heading">

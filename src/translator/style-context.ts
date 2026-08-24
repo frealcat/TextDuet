@@ -19,14 +19,13 @@ export function collectStyleContext(
   const normalizedPreferred = normalizeComputedColor(preferredColor);
   if (!sourceColor || !normalizedPreferred) return undefined;
   const backgroundColor = resolveEffectiveBackgroundColor(element);
-  const fontSize = Number.parseFloat(computed.fontSize);
-  const fontWeight = Number.parseInt(computed.fontWeight, 10);
-  const isLargeText = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
   return createTranslationStyleContext(
     sourceColor,
     normalizedPreferred,
     backgroundColor,
-    isLargeText ? 3 : 4.5,
+    // Keep a user-selected color consistent when it remains legible, while
+    // still rejecting genuinely low-contrast combinations.
+    3,
   );
 }
 

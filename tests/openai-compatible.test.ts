@@ -117,6 +117,64 @@ describe('parseTranslatedBlocks', () => {
 });
 
 describe('OpenAiCompatibleProvider', () => {
+  it('streams completed blocks before the final done event and records usage', async () => {
+    const events = [
+      { choices: [{ delta: { content: '{\"blocks\":[{\"id\":\"block-1\",\"translatedText\":\"你好\"},' } }] },
+      { choices: [{ delta: { content: '{\"id\":\"block-2\",\"translatedText\":\"世界\"}]}' } }] },
+      { usage: { prompt_tokens: 10, completion_tokens: 8 }, choices: [] },
+    ];
+    const body = `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')}data: [DONE]\n\n`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const blocks: unknown[] = [];
+    const provider = new OpenAiCompatibleProvider({ retryBaseDelayMs: 0 });
+    await expect(provider.translateStream(settings, 'placeholder-api-key', request, {
+      onBlock: (block) => blocks.push(block),
+    })).resolves.toMatchObject({
+      model: 'example-model',
+      usage: { inputTokens: 10, outputTokens: 8, kind: 'actual' },
+      isStreaming: true,
+    });
+    expect(blocks).toEqual([
+      { id: 'block-1', translatedText: '你好' },
+      { id: 'block-2', translatedText: '世界' },
+    ]);
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(requestBody).toMatchObject({ stream: true, stream_options: { include_usage: true } });
+  });
+
+  it('falls back to ordinary JSON in the same streaming call', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: '{\"blocks\":[{\"id\":\"block-1\",\"translatedText\":\"你好\"},{\"id\":\"block-2\",\"translatedText\":\"世界\"}]}' } }],
+      usage: { prompt_tokens: 4, completion_tokens: 5 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new OpenAiCompatibleProvider({ retryBaseDelayMs: 0 });
+    await expect(provider.translateStream(settings, 'placeholder-api-key', request)).resolves.toMatchObject({
+      isStreaming: false,
+      usage: { inputTokens: 4, outputTokens: 5, kind: 'actual' },
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an incomplete SSE stream after retaining no incomplete block', async () => {
+    const body = `data: ${JSON.stringify({ choices: [{ delta: { content: '{\"blocks\":[{\"id\":\"block-1\",\"translatedText\":\"你好\"}]' } }] })}\n\n`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const blocks: unknown[] = [];
+    const provider = new OpenAiCompatibleProvider({ retryBaseDelayMs: 0 });
+    await expect(provider.translateStream(settings, 'placeholder-api-key', request, {
+      onBlock: (block) => blocks.push(block),
+    })).rejects.toThrow('模型流式响应未完整结束');
+    expect(blocks).toEqual([{ id: 'block-1', translatedText: '你好' }]);
+  });
+
   it('returns a validated translation from a compatible endpoint', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

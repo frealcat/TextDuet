@@ -17,7 +17,7 @@ export default defineConfig({
   manifest: {
     name: 'TextDuet',
     description: 'Use your own model API to read webpages in bilingual mode.',
-    permissions: ['activeTab', 'scripting', 'storage'],
+    permissions: ['activeTab', 'scripting', 'storage', 'contextMenus'],
     optional_host_permissions: ['https://*/*'],
     icons: {
       16: 'icons/icon-16.png',

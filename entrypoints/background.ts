@@ -17,6 +17,7 @@ import { createCompatibilityDiagnostic } from '@/src/core/compatibility-diagnost
 import {
   estimateTranslationWithCache,
   translateWithCache,
+  translateStreamWithCache,
 } from '@/src/background/translation-service';
 import { OpenAiCompatibleProvider } from '@/src/providers/openai-compatible';
 import {
@@ -37,16 +38,27 @@ import {
   createUnavailableTranslationCacheDashboard,
   getTranslationCacheDashboard,
 } from '@/src/storage/translation-cache';
+import { normalizeProviderLanguagePreferences, resolveTargetLanguage } from '@/src/core/defaults';
 
 const provider = new OpenAiCompatibleProvider();
-const requestControllersByTab = new Map<number, AbortController>();
+const requestControllersByTab = new Map<number, Set<AbortController>>();
 const LAST_TRANSLATED_TAB_ID_KEY = 'textduet:last-translated-tab-id';
+const LAST_WEB_TAB_ID_KEY = 'textduet:last-web-tab-id';
 
 export default defineBackground(() => {
   void restrictStorageAccess();
+  void registerSelectionMenu();
+  browser.contextMenus?.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== 'textduet-translate-selection' || !tab?.id || !info.selectionText) return;
+    void startSelectionTranslation(tab.id, info.frameId || 0, info.selectionText);
+  });
   browser.tabs.onRemoved.addListener((tabId) => {
     abortTabTranslation(tabId);
     void clearLastTranslatedTab(tabId);
+    void clearLastWebTab(tabId);
+  });
+  browser.tabs.onActivated.addListener(({ tabId }) => {
+    void rememberWebTab(tabId);
   });
 
   browser.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
@@ -62,6 +74,38 @@ export default defineBackground(() => {
       });
 
     return true;
+  });
+  browser.runtime.onConnect.addListener((port) => {
+    if (port.name !== 'textduet-translation-stream') return;
+    const tabId = port.sender?.tab?.id;
+    if (!tabId) return;
+    const controller = new AbortController();
+    let requestInFlight = false;
+    registerController(tabId, controller);
+    port.onMessage.addListener((rawMessage) => {
+      if (rawMessage?.type !== 'TRANSLATE_BATCH_STREAM') return;
+      if (requestInFlight) {
+        port.postMessage({ type: 'TRANSLATION_ERROR', message: '已有翻译请求正在进行' });
+        return;
+      }
+      requestInFlight = true;
+      void (async () => {
+        try {
+          const parsed = parseRuntimeMessage(rawMessage);
+          if (parsed.type !== 'TRANSLATE_BATCH_STREAM') throw new Error('流式请求格式无效');
+          const response = await translateStreamWithCache(provider, parsed.request, controller.signal, (block) => {
+            port.postMessage({ type: 'TRANSLATION_BLOCK', block });
+          });
+          port.postMessage({ type: 'TRANSLATION_COMPLETE', response });
+        } catch (error) {
+          port.postMessage({ type: 'TRANSLATION_ERROR', message: error instanceof Error ? error.message : '网页翻译失败' });
+        } finally {
+          requestInFlight = false;
+          unregisterController(tabId, controller);
+        }
+      })();
+    });
+    port.onDisconnect.addListener(() => controller.abort());
   });
 });
 
@@ -133,7 +177,16 @@ async function handleMessage(
 
     case 'TRANSLATE_ACTIVE_TAB':
       assertTrustedExtensionSender(sender);
-      return startActiveTabTranslation(message.targetLanguage);
+      return startActiveTabTranslation(message.targetLanguage, message.sourceLanguage);
+    case 'SET_LANGUAGE_PREFERENCES':
+      assertTrustedExtensionSender(sender);
+      return saveLanguagePreferences(message.sourceLanguage, message.targetLanguage);
+    case 'SET_SELECTION_QUICK_ACTION':
+      assertTrustedExtensionSender(sender);
+      return saveSelectionQuickAction(message.enabled);
+    case 'CONFIGURE_SELECTION_QUICK_ACTION':
+      assertTrustedExtensionSender(sender);
+      return configureSelectionQuickAction(message.enabled, message.sourceLanguage, message.targetLanguage, message.translationColor);
 
     case 'STOP_ACTIVE_TAB':
       assertTrustedExtensionSender(sender);
@@ -157,6 +210,8 @@ async function handleMessage(
 
     case 'TRANSLATE_BATCH':
       return translateBatch(message.request, assertTabSender(sender));
+    case 'REQUEST_SELECTION_TRANSLATION':
+      return requestSelectionTranslation(message.text, assertTabSender(sender), sender.frameId || 0);
 
     default:
       throw new Error('不支持的扩展消息');
@@ -164,7 +219,7 @@ async function handleMessage(
 }
 
 async function getPublicProviderSettings(): Promise<PublicProviderSettings> {
-  const settings = parseProviderSettings(await providerSettingsStorage.getValue());
+  const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
   const apiKey = await getApiKey(settings.apiKeyPersistence);
   return { ...settings, hasApiKey: Boolean(apiKey) };
 }
@@ -173,7 +228,7 @@ async function saveProviderSettings(
   settings: ProviderSettings,
   apiKey?: string,
 ): Promise<OperationResult> {
-  const validatedSettings = parseConfiguredProviderSettings(settings);
+  const validatedSettings = normalizeProviderLanguagePreferences(parseConfiguredProviderSettings(settings));
   await providerSettingsStorage.setValue(validatedSettings);
 
   if (apiKey?.trim()) {
@@ -184,7 +239,7 @@ async function saveProviderSettings(
 }
 
 async function testProvider(): Promise<OperationResult> {
-  const settings = parseConfiguredProviderSettings(await providerSettingsStorage.getValue());
+  const settings = normalizeProviderLanguagePreferences(parseConfiguredProviderSettings(await providerSettingsStorage.getValue()));
   const apiKey = await getApiKey(settings.apiKeyPersistence);
   await provider.testConnection(settings, apiKey);
   return { ok: true, message: '连接成功，模型已返回测试翻译' };
@@ -196,14 +251,12 @@ async function translateBatch(
 ): Promise<TranslationBatchResponse> {
   abortTabTranslation(tabId);
   const controller = new AbortController();
-  requestControllersByTab.set(tabId, controller);
+  registerController(tabId, controller);
 
   try {
     return await translateWithCache(provider, request, controller.signal);
   } finally {
-    if (requestControllersByTab.get(tabId) === controller) {
-      requestControllersByTab.delete(tabId);
-    }
+    unregisterController(tabId, controller);
   }
 }
 
@@ -213,7 +266,7 @@ async function estimateTranslationRequest(
   return estimateTranslationWithCache(request);
 }
 
-async function startActiveTabTranslation(targetLanguage: string): Promise<OperationResult> {
+async function startActiveTabTranslation(targetLanguage: string, sourceLanguage = 'auto'): Promise<OperationResult> {
   const tab = await getActiveTab();
   const settings = parseConfiguredProviderSettings(await providerSettingsStorage.getValue());
   abortTabTranslation(tab.id);
@@ -227,9 +280,11 @@ async function startActiveTabTranslation(targetLanguage: string): Promise<Operat
     .catch(() => ({ state: 'idle', hasRun: false } as const));
   await browser.tabs.sendMessage(tab.id, {
     type: 'START_PAGE_TRANSLATION',
-    targetLanguage,
+    targetLanguage: resolveTargetLanguage(targetLanguage),
+    sourceLanguage,
     displayMode: settings.displayMode,
     translationColor: settings.translationColor,
+    selectionQuickAction: settings.selectionQuickAction === true,
     forceRefresh: previousState.hasRun,
   } satisfies RuntimeMessage);
   await browser.storage.session
@@ -237,6 +292,79 @@ async function startActiveTabTranslation(targetLanguage: string): Promise<Operat
     .catch(() => undefined);
 
   return { ok: true, message: '已开始翻译当前网页' };
+}
+
+async function saveLanguagePreferences(sourceLanguage: string, targetLanguage: string): Promise<OperationResult> {
+  const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
+  await providerSettingsStorage.setValue({ ...settings, sourceLanguage, targetLanguage });
+  return { ok: true, message: '语言偏好已保存' };
+}
+
+async function saveSelectionQuickAction(enabled: boolean): Promise<OperationResult> {
+  const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
+  await providerSettingsStorage.setValue({ ...settings, selectionQuickAction: enabled });
+  return { ok: true, message: enabled ? '已开启选区快捷翻译' : '已关闭选区快捷翻译' };
+}
+
+async function configureSelectionQuickAction(
+  enabled: boolean,
+  sourceLanguage?: string,
+  targetLanguage?: string,
+  translationColor?: string,
+): Promise<OperationResult> {
+  const tab = await getSelectionTargetTab();
+  await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['/translator.js'] });
+  await browser.tabs.sendMessage(tab.id, {
+    type: 'CONFIGURE_SELECTION_QUICK_ACTION',
+    enabled, sourceLanguage, targetLanguage, translationColor,
+  } satisfies RuntimeMessage);
+  return { ok: true, message: enabled ? '已开启选区快捷翻译' : '已关闭选区快捷翻译' };
+}
+
+async function getSelectionTargetTab(): Promise<{ id: number }> {
+  const stored = await browser.storage.session.get(LAST_WEB_TAB_ID_KEY);
+  const storedTabId = stored[LAST_WEB_TAB_ID_KEY];
+  if (Number.isInteger(storedTabId) && (storedTabId as number) >= 0) {
+    const storedTab = await browser.tabs.get(storedTabId as number).catch(() => undefined);
+    if (storedTab?.id && isWebPageUrl(storedTab.url)) return { id: storedTab.id };
+  }
+  const tabs = await browser.tabs.query({ currentWindow: true });
+  const webTabs = tabs
+    .filter((tab) => tab.id && isWebPageUrl(tab.url))
+    .sort((left, right) => (right.lastAccessed || 0) - (left.lastAccessed || 0));
+  const fallback = webTabs[0];
+  if (fallback?.id) return { id: fallback.id };
+  const active = await getActiveTabDetails();
+  return { id: active.id };
+}
+
+async function registerSelectionMenu(): Promise<void> {
+  if (!browser.contextMenus) return;
+  await browser.contextMenus.removeAll().catch(() => undefined);
+  await browser.contextMenus.create({
+    id: 'textduet-translate-selection',
+    title: '翻译选中文本',
+    contexts: ['selection'],
+  });
+}
+
+async function startSelectionTranslation(tabId: number, frameId: number, text: string): Promise<void> {
+  const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
+  await browser.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ['/translator.js'] });
+  await browser.tabs.sendMessage(tabId, {
+    type: 'TRANSLATE_SELECTION',
+    text,
+    sourceLanguage: settings.sourceLanguage || 'auto',
+    targetLanguage: resolveTargetLanguage(settings.targetLanguage),
+    translationColor: settings.translationColor,
+  }, { frameId });
+}
+
+async function requestSelectionTranslation(text: string, tabId: number, frameId: number): Promise<OperationResult> {
+  const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
+  if (settings.selectionQuickAction !== true) throw new Error('选区快捷翻译已关闭');
+  await startSelectionTranslation(tabId, frameId, text);
+  return { ok: true, message: '已开始翻译选中文本' };
 }
 
 async function getActiveTabTranslationState() {
@@ -337,10 +465,27 @@ async function getActiveTabDetails(): Promise<{ id: number; url: string }> {
   if (!tab?.id) {
     throw new Error('无法访问当前标签页');
   }
-  if (!tab.url?.startsWith('http://') && !tab.url?.startsWith('https://')) {
+  if (!isWebPageUrl(tab.url)) {
     throw new Error('浏览器内部页面不支持翻译');
   }
   return { id: tab.id, url: tab.url };
+}
+
+function isWebPageUrl(url: string | undefined): url is string {
+  return Boolean(url?.startsWith('http://') || url?.startsWith('https://'));
+}
+
+async function rememberWebTab(tabId: number): Promise<void> {
+  const tab = await browser.tabs.get(tabId).catch(() => undefined);
+  if (!tab?.id || !isWebPageUrl(tab.url)) return;
+  await browser.storage.session.set({ [LAST_WEB_TAB_ID_KEY]: tab.id });
+}
+
+async function clearLastWebTab(tabId: number): Promise<void> {
+  const stored = await browser.storage.session.get(LAST_WEB_TAB_ID_KEY);
+  if (stored[LAST_WEB_TAB_ID_KEY] === tabId) {
+    await browser.storage.session.remove(LAST_WEB_TAB_ID_KEY);
+  }
 }
 
 function assertTabSender(sender: Browser.runtime.MessageSender): number {
@@ -359,8 +504,22 @@ function assertTrustedExtensionSender(sender: Browser.runtime.MessageSender): vo
 }
 
 function abortTabTranslation(tabId: number): void {
-  requestControllersByTab.get(tabId)?.abort();
+  const controllers = requestControllersByTab.get(tabId);
+  controllers?.forEach((controller) => controller.abort());
   requestControllersByTab.delete(tabId);
+}
+
+function registerController(tabId: number, controller: AbortController): void {
+  const controllers = requestControllersByTab.get(tabId) || new Set<AbortController>();
+  controllers.add(controller);
+  requestControllersByTab.set(tabId, controllers);
+}
+
+function unregisterController(tabId: number, controller: AbortController): void {
+  const controllers = requestControllersByTab.get(tabId);
+  if (!controllers) return;
+  controllers.delete(controller);
+  if (controllers.size === 0) requestControllersByTab.delete(tabId);
 }
 
 async function clearLastTranslatedTab(tabId: number): Promise<void> {
