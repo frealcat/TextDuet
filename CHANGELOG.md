@@ -2,9 +2,13 @@
 
 TextDuet 的用户可见变化记录在此文件中。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-当前仓库尚未形成正式发布版本或 Git tag，因此以下内容全部属于 `Unreleased`，不得理解为已经上线或可从 Chrome 商店获得。
+当前最新发布：`0.1.0`（2026-08-24，本地安装版）。`Unreleased` 段保留给 0.1.1 及后续版本的待写入条目。
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-08-24
+
+首版 `0.1.0` 本地安装版。配套 Git tag 与 GitHub Release 由项目所有者按 `AGENT_DEV.md §5` 单独授权后创建；本仓库在此之前不得声明已"对外发布"。本版不进入 Chrome Web Store、其他商店或自动更新分发。
 
 ### Added
 

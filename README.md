@@ -4,9 +4,9 @@
 
 TextDuet 是一款本地优先、开源、无插件订阅费的 Chrome 双语网页翻译扩展。用户提供自己的模型 API Key、API Base URL 与模型名称；网页文本从浏览器直接发送给用户选择的模型服务商，不经过 TextDuet 中转服务器。
 
-当前版本：`0.1.0 Alpha 本地安装候选` · 平台：`Chrome Manifest V3` · 许可证：[Apache-2.0](./LICENSE)
+当前版本：`0.1.0 本地安装版` · 平台：`Chrome Manifest V3` · 许可证：[Apache-2.0](./LICENSE)
 
-> TextDuet 不收取插件订阅费，但模型服务商可能收取 API 调用费用。当前版本尚未正式发布，首版只支持在 Chrome 开发者模式中本地加载，不提供商店安装或自动更新。
+> TextDuet 不收取插件订阅费，但模型服务商可能收取 API 调用费用。`0.1.0` 仅以本地安装版形式分发（Chrome 开发者模式加载 `textduet-0.1.0-chrome.zip`），不提供 Chrome Web Store、其他商店或自动更新。
 
 ## 产品全景
 

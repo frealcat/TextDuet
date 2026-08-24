@@ -41,6 +41,7 @@
 | TD-2026-018 | M2 公开页面周期回归与问题收口 | 已验证 | M2 | 未发布 |
 | TD-2026-019 | M2 无感接入、语言对、流式翻译与选区翻译 | 进行中 | M2 | 未发布 |
 | TD-2026-020 | M2 流式回显、页面壳层兼容与选区快捷入口稳定性 | 已验证 | M2 | 未发布 |
+| TD-2026-021 | V1.0 本地安装版收口 | 进行中 | V1.0 | 未发布 |
 
 > TD-2026-001 至 TD-2026-003 是 2026-08-17 根据当前未发布仓库状态建立的基线回溯，不代表历史上已有对应 Git commit、tag 或公开版本。
 
@@ -971,6 +972,61 @@
 - 完成工程验证后，项目所有者进行 Chrome 安装态验收；通过后再评估 V1.0 发布候选收口。
 
 项目所有者验收反馈（2026-08-24）：项目所有者已在本机 Chrome 完成 TD-2026-020 全部范围的打包、加载、真实网页操作和功能检查，确认批次即时回显、header/navigation/footer 可读文本召回、选区快捷图标稳定性与默认开关行为符合预期，验收通过。该反馈关闭 Chrome 安装态待验收项；本记录不补写未被反馈的页面数量或截图统计，公开页面自动化矩阵的环境失败证据按既有约定继续保留。
+
+### TD-2026-021：V1.0 本地安装版收口
+
+| 字段 | 内容 |
+| --- | --- |
+| 状态 | 进行中；Agent 侧门禁、文档与 API Key 边界已复核，OpenAI/DeepSeek/自定义端点真实连接测试由项目所有者执行 |
+| 开始日期 | 2026-08-24 |
+| 所属阶段 | V1.0 |
+| 目标 | 完成 PRD §12 本地安装版全部验收门，把当前"已验证、未发布"状态切为"已发布 0.1.0"，形成首个对外可分发的本地安装版 |
+
+范围（Agent 侧，本轮已执行或即将执行）：
+
+- 跑完整 `npm run release:check`，确认类型检查、20 个测试文件 / 135 项单元测试、生产构建、Chrome ZIP 打包和生产 Manifest 安全门禁通过。
+- 在 `src/`、`entrypoints/` 与 `.output/chrome-mv3/` 复核 API Key、`Authorization: Bearer`、真实账户信息或绝对路径不会出现在内容脚本、console 日志、构建产物或错误对象中；不通过的命中点回到修复。
+- 把当前 `CHANGELOG.md` Unreleased 段切为 `## [0.1.0] - 2026-08-24`，按 [Keep a Changelog](https://keepachangelog.com/) 维护面向用户的发布说明。
+- 更新 `README.md` 顶部版本字段、`docs/RELEASE-CHECKLIST.md` 的"本次验收记录"段、`docs/PRIVACY.md` 与 `docs/CHROME-PERMISSIONS.md` 的版本适用说明，使其与 `0.1.0` 对齐。
+- `docs/PRODUCT-ROADMAP.md` 的 V1.0 状态从"已规划"改为"已发布"；`docs/PRD.zh-CN.md` 顶部"产品阶段"从"进入 V1.0 本地安装版准备"改为"已发布 0.1.0"。
+- 准备好 `0.1.0` 的 release notes 草稿，但**不**自动 push、tag 或创建 GitHub Release；这两项按 `AGENT_DEV.md §5` 需要项目所有者单独授权。
+
+范围（项目所有者侧，必须由本机 Chrome 执行，Agent 不代验）：
+
+- 真实连接 OpenAI（推荐 `gpt-4o-mini` 或同档低成本模型），保存会话级 API Key，启动一次普通文章页双语翻译，确认 200 / 模型 JSON 校验 / 实际 usage 写账。
+- 真实连接 DeepSeek（推荐 `deepseek-chat`），保存会话级 API Key，跑通连接测试 + 普通文章页翻译 + 主动查询余额。
+- 真实连接至少一个自定义兼容端点（OpenRouter 或硅基流动均可），验证 Origin 单独授权、Base URL 解析、模型名称匹配和翻译往返。
+- 10 个不同结构文章网页双语翻译的人工目视验收；如不通过，回到修复并补一条 Unreleased 段。
+- 解压 `textduet-0.1.0-chrome.zip`，在临时全新 Chrome 配置加载，确认扩展标识、Popup、Options、图标、版本号与 Manifest 字段全部正确。
+
+非范围：
+
+- 不新增 Provider、权限、网络数据流或对外 URL。
+- 不替代项目所有者执行 Chrome 打包、加载或真实网页操作。
+- 不为 0.1.0 引入 Chrome Web Store、其他商店或自动更新分发。
+- 不为 0.1.0 启动 V1.x 候选（快捷键、Anthropic / Gemini 原生 Provider、术语表、划词增强等）按 `PRODUCT-ROADMAP.md §2` 推迟到 0.1.0 发布之后。
+
+关键决策：
+
+- 0.1.0 仍为本地安装版，不上 Chrome Web Store；这与 PRD §4.2、§12 的"非目标"一致。
+- V1.0 收口不引入新依赖、不修改 `package.json` 版本号之外的字段、不修改公共 API（Provider 接口、Schema、Message 协议）。
+- 真实 DeepSeek 余额查询在自动化中只跑 Mock；项目所有者在本机点击"查询余额"时允许走真实接口，结果只显示不持久化。
+
+权限、隐私与成本影响：无新增权限、Provider、遥测或网络数据流。API Key、缓存、账本与诊断边界与 M2 保持一致。
+
+验证证据（Agent 侧，提交时附）：
+
+- `npm run release:check` 通过：typecheck / 20 个测试文件 / 135 项测试 / 生产构建 / ZIP 打包 / `verify-release.mjs` 安全门禁。
+- 源码与 `.output/chrome-mv3` 中无 `Authorization`、`Bearer`、真实 Key 模式或绝对路径命中（命中位置仅限 `.env.local`、`.env.example` 注释与 README 示例占位符）。
+- `docs/PRODUCT-ROADMAP.md`、`docs/PRD.zh-CN.md`、`README.md`、`docs/RELEASE-CHECKLIST.md`、`docs/PRIVACY.md`、`docs/CHROME-PERMISSIONS.md`、`CHANGELOG.md` 已对齐 0.1.0。
+
+关联文档：`docs/PRD.zh-CN.md` §12、`docs/PRODUCT-ROADMAP.md` §8、`docs/RELEASE-CHECKLIST.md`、`docs/CHROME-PERMISSIONS.md`、`docs/PRIVACY.md`、`CHANGELOG.md`。
+
+遗留与下一步：
+
+- 项目所有者完成 OpenAI / DeepSeek / 自定义端点真实连接测试与 10 篇文章页目视验收后，把验收反馈附在本条目下，并按 `AGENT_DEV.md §5` 单独授权打 `0.1.0` tag、push 与（可选）创建 GitHub Release。
+- 若 0.1.0 验收发现 P0，回到 Unreleased 段补修复条目并延后发布；`docs/PRODUCT-ROADMAP.md` §2 路线图原则"不通过修改文档描述掩盖"必须遵守。
+- V1.x 候选（快捷键 / Anthropic / Gemini / 术语表 / 划词增强等）由下一轮 0.1.1 立项。
 
 ## 4. 新迭代模板
 

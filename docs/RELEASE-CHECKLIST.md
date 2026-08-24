@@ -1,6 +1,6 @@
-# Alpha 本地安装候选验收清单
+# TextDuet 0.1.0 本地安装版验收清单
 
-TextDuet 首版只交付可本地加载的 Chrome 扩展包。以下清单用于生成和验收候选包，不包含 Chrome Web Store、其他商店、自动更新、Git tag 或远端推送。
+TextDuet `0.1.0` 只交付可本地加载的 Chrome 扩展包。以下清单用于生成和验收 `0.1.0` 候选包，不包含 Chrome Web Store、其他商店、自动更新、Git tag 或远端推送。
 
 ## 自动门禁
 
@@ -33,15 +33,16 @@ TextDuet 首版只交付可本地加载的 Chrome 扩展包。以下清单用于
 
 | 字段 | 结果 |
 | --- | --- |
-| 候选版本 | `0.1.0 Alpha`，本地安装候选已验证、未发布 |
-| 检查日期 | 2026-08-18 |
-| Git 状态 | TD-2026-017 已形成开发检查点并首次推送；本轮工作区收口后另行提交，仍未 tag、未创建 Release |
+| 候选版本 | `0.1.0` 本地安装版，已 Agent 侧门禁通过；待项目所有者完成 OpenAI/DeepSeek/自定义端点真实连接与 10 篇文章页目视验收后切换为"已发布" |
+| 检查日期 | 2026-08-24 |
+| Git 状态 | TD-2026-019/020 已验证、TD-2026-021 V1.0 收口进行中；workspace 已 commit 至 `9f73bb3`；仍未打 tag、未创建 GitHub Release |
 | 环境 | Node.js `v24.14.0`；Chrome for Testing `151.0.7922.34`；darwin-arm64 |
-| 候选包 | `.output/textduet-0.1.0-chrome.zip`，325.78 kB |
-| SHA-256 | `2e46b1f318eab413627ad95feb9342bd871aa6ccafe42aeb4ad5ac3468e1b6fb` |
-| 项目所有者实机验收 | 2026-08-18；本机 Chrome；Qwen；正常使用通过 |
+| 候选包 | `.output/textduet-0.1.0-chrome.zip`，333.39 kB |
+| 验证矩阵 | `npm run release:check` 通过：typecheck ✓ / 20 个测试文件 / 135 项单元测试 ✓ / 生产构建 ✓ / ZIP 打包 ✓ / `verify-release.mjs` 安全门禁 ✓ |
+| 关键安全扫描 | 源码与 `.output/chrome-mv3` 中 `Authorization: Bearer` 仅出现在 `src/providers/openai-compatible.ts` 与 `src/providers/provider-balance.ts` 的 Provider 类内（向用户配置 API 发送的预期用途）；未发现真实 Key 模式（`sk-…` / `gsk_…`）、未发现内容脚本或 console 输出泄漏、未发现构建产物中的用户绝对路径 |
+| 候选与正式发布差距 | TD-2026-021 §"项目所有者侧"三项（OpenAI/DeepSeek/自定义真实连接、10 篇文章页目视验收、ZIP 解压加载确认）未执行 |
 
-`npm ci` 与 `npm run release:check` 通过，15 个测试文件、91 项测试通过。候选 ZIP 解压后在临时全新 Chrome 配置中加载成功；6 份原创语料、1000 节点性能、Service Worker 恢复、恶意输出纯文本、60 天用量图和 DeepSeek Mock 余额链路通过。
+`npm ci` 与 `npm run release:check` 通过，20 个测试文件、135 项测试通过。候选 ZIP 解压后在临时全新 Chrome 配置中加载成功；6 份原创语料、1000 节点性能、Service Worker 恢复、恶意输出纯文本、60 天用量图、DeepSeek Mock 余额、bfcache 端口断连、动态语言对、划词快捷入口稳定性、header/navigation/footer 召回与本机 icon 视觉回归通过。
 
 公开网站整轮先得到 12/16 通过、0 个产品失败、4 个 GitHub 网络环境失败；独立网络探测恢复后只复跑 4 个失败样本并全部通过。因此同一候选包的 16 个默认目标均取得通过结果，首次网络波动仍如实保留在 TD-2026-013 记录中。
 
@@ -51,4 +52,4 @@ TextDuet 首版只交付可本地加载的 Chrome 扩展包。以下清单用于
 
 - 项目所有者可在模型厂商控制台核对真实金额和按量账单；当前仅证明 Provider 返回 usage 与本地账本一致。
 - 真实 DeepSeek 账户余额未在本轮查询，自动化只使用确定性 Mock，避免读取或截图真实账户数据。
-- 本清单最初执行时 commit、tag、push、GitHub Release、商店提交和其他对外分发均未执行；之后项目所有者已授权 TD-2026-017 开发检查点 commit 和首次推送，但仍未创建 tag、GitHub Release 或商店发布物。
+- `0.1.0` 仍未创建 Git tag、GitHub Release、Chrome Web Store 商店发布物；按 `AGENT_DEV.md §5`，tag、push、Release 必须由项目所有者单独授权，Agent 不得代为执行。
