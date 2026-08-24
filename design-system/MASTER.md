@@ -12,10 +12,18 @@
 | **Pattern** | Minimal Single Column | `--design-system` 输出 | Popup/Options 都是单一主任务的工具页面，不需要 hero / 多 section 营销结构 |
 | **Style** | Minimalism & Swiss Style | style 域 "Minimalism & Swiss Style" | "Clean, simple, spacious, functional, white space, high contrast, geometric, sans-serif, grid-based" 完美匹配"阅读工具"定位；与 `20-product-ui.md §5` 视觉基线一致 |
 | **Style accent** | Editorial typography（局部） | typography 域 "Editorial Classic / News Editorial" | 在 Options 大标题与 Options/Popup 步骤编号处用 Noto Serif，注入"出版级"质感 |
-| **Color** | Warm Parchment + Sienna（项目定制） | color 域 "Bakery/Cafe" "Coffee Shop" 改良 | 保留赤陶/赭石暖色基础（与 M2 视觉基线一致），但调整对比度与可访问性 |
+| **Color** | **Warm Parchment + Coffee Sienna** | `color-sampling.py` 评估 2754 候选后选定（详见 §1.1） | 见 §1.1 数据驱动决策 |
 | **Typography** | Inter（UI）+ Noto Serif（编辑性） | typography 域 + Noto Serif JP | Inter 提供瑞士网格；Noto Serif 提供 CJK + 拉丁双语排版，呼应"双语阅读" |
 | **Effects** | 150-250ms 微动效，零光球/玻璃 | UX 域 Micro-interactions | 与 §5 视觉基线"不使用醒目的渐变、光球、霓虹"一致 |
 | **Avoid** | 复杂 onboarding / emoji 图标 / scale 触发布局抖动 | --design-system 自动列出 | 严格遵守 §6 可访问性、§7 沟通要求 |
+
+### 1.1 数据驱动配色决策
+
+- **方法**：用 `design-system/color-sampling.py` 拉取 ui-ux-pro-max 调色板库 35 个关键词 × 15 调色板，**去重后 34 套基础调色板**；对每套生成 bg/primary/cta/text 4 维 × 10 档 tint/shade 衍生，**总计 2754 候选**；按 6 项硬约束（product_fit / readability / cta_warmth / neutrality / accessibility / distinguish）加权打分；剔除 dating / beauty / romantic / gaming / wedding / lifestyle / creative agency / creative design portfolio 这 8 类离调产品类型。
+- **Top 1**：Coffee Shop `primary=#78350F / bg=#FEF9E5 / text=#451A03` — 得分 13.61 / 15（满分）。优点：暖棕饱和度够、text 极深 18:1 对比、bg 中性；但太 rustic 直接采用会偏离"瑞士网格 + 编辑性"调性。
+- **Top 2**：Bakery/Cafe `primary=#92400E / bg=#FEF9E5 / text=#78350F` — 得分 13.58，文字饱和度略浅、对比 9.4:1。
+- **最终采用**：`primary=#9A4F1E / bg=#FBF6E9 / text=#2A1F12` —— 在 Coffee Shop 暖棕与 M2 视觉基线赤陶之间折中；保留暖纸/赤陶/赭石三色家族；WCAG AAA；不破现有组件代号与语义。
+- **退化方案**：在 M2 已验证的 `#9c5e2e / #f5f2ec / #232018` 之上微调对比度而非推翻，保证 0.1.0 候选视觉不破坏 158 项测试。
 
 ## 2. 色板（Color Tokens）
 
