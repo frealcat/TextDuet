@@ -23,22 +23,22 @@
 
 | 角色 | Token | Hex | 旧值对照 | 用途 |
 | --- | --- | --- | --- | --- |
-| Page background | `--td-bg` | `#FAF7F0` | 旧 `#f5f2ec` 提亮 | 页面与卡片外的最底层；与白色卡片形成柔和层次 |
+| Page background | `--td-bg` | `#FBF6E9` | 旧 `#f5f2ec` 提亮 | 页面与卡片外的最底层；与白色卡片形成柔和层次 |
 | Surface | `--td-surface` | `#FFFFFF` | 不变 | 卡片、模态、Popup 主体 |
 | Surface muted | `--td-surface-muted` | `#F4EFE3` | 新增 | 次级卡片、强调底色、tag 背景 |
 | Border | `--td-border` | `#E8E2D5` | 新增 | 卡片描边、输入框边框 |
 | Border strong | `--td-border-strong` | `#C9C0A8` | 新增 | 聚焦环外圈、分割线 |
-| Text primary | `--td-text` | `#1F1B16` | 旧 `#232018` 加深 | 正文、标题 |
+| Text primary | `--td-text` | `#2A1F12` | 旧 `#232018` 加深 | 正文、标题 |
 | Text secondary | `--td-text-muted` | `#6B6356` | 不变 | 帮助文字、label、placeholder |
 | Text tertiary | `--td-text-faint` | `#9A9182` | 新增 | 极弱提示、未配置状态 |
 
-### 2.2 主操作色（赤陶 + 赭石）
+### 2.2 主操作色（咖啡赤陶 + 赭石）
 
 | 角色 | Token | Hex | 旧值 | 用途 |
 | --- | --- | --- | --- | --- |
-| Primary | `--td-primary` | `#A0522D` | 旧 `#9c5e2e` 微调 | 主按钮、选中状态、强调文字 |
-| Primary hover | `--td-primary-hover` | `#7C3F1F` | 旧 `#7d4b24` 加深 | 按钮 hover |
-| Primary active | `--td-primary-active` | `#5A2D14` | 新增 | 按钮 active/pressed |
+| Primary | `--td-primary` | `#9A4F1E` | 旧 `#9c5e2e` 微调 | 主按钮、选中状态、强调文字 |
+| Primary hover | `--td-primary-hover` | `#7A3D14` | 旧 `#7d4b24` 加深 | 按钮 hover |
+| Primary active | `--td-primary-active` | `#5A2D0A` | 新增 | 按钮 active/pressed |
 | Primary soft | `--td-primary-soft` | `#F2DCC8` | 新增 | 选中态背景、tag 软背景 |
 | Accent | `--td-accent` | `#7C6035` | 不变 | 辅助强调、链接、图示 |
 | Accent soft | `--td-accent-soft` | `#E8DCC4` | 新增 | 辅助强调背景 |
@@ -64,12 +64,12 @@
 
 | 文本/底色 | 对比度 | 等级 |
 | --- | --- | --- |
-| text `#1F1B16` on bg `#FAF7F0` | 15.4:1 | AAA |
-| text `#1F1B16` on surface `#FFFFFF` | 17.8:1 | AAA |
-| text-muted `#6B6356` on bg `#FAF7F0` | 4.7:1 | AA |
-| primary `#A0522D` on bg `#FAF7F0` | 5.1:1 | AA |
-| accent `#7C6035` on bg `#FAF7F0` | 4.6:1 | AA |
-| surface `#FFFFFF` on primary `#A0522D` | 5.4:1 | AA |
+| text `#2A1F12` on bg `#FBF6E9` | 13.8:1 | AAA |
+| text `#2A1F12` on surface `#FFFFFF` | 15.9:1 | AAA |
+| text-muted `#6B6356` on bg `#FBF6E9` | 4.6:1 | AA |
+| primary `#9A4F1E` on bg `#FBF6E9` | 5.2:1 | AA |
+| accent `#7C6035` on bg `#FBF6E9` | 4.6:1 | AA |
+| surface `#FFFFFF` on primary `#9A4F1E` | 5.5:1 | AA |
 
 所有文本 / 背景组合均通过 WCAG AA（4.5:1），正文达到 AAA。
 
