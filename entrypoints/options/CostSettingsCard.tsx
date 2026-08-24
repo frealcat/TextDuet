@@ -191,7 +191,21 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
         </div>
       )}
 
-      <p className="card-status" role="status">{status}</p>
+      <p
+        className={`td-badge ${
+          /失败|错误|不能|不可|拒绝/.test(status)
+            ? 'td-badge--danger'
+            : /警告|注意|未配置/.test(status)
+              ? 'td-badge--warning'
+              : /成功|已|完成/.test(status)
+                ? 'td-badge--success'
+                : 'td-badge--info'
+        }`}
+        role="status"
+        aria-live="polite"
+      >
+        {status}
+      </p>
       <div className="card-actions">
         <button className="secondary-button" type="button" onClick={save} disabled={busy}>
           <Save aria-hidden="true" size={14} strokeWidth={2} />

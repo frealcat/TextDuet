@@ -292,7 +292,21 @@ export function App() {
       <CompatibilityDiagnosticsCard />
 
       <div className="action-bar">
-        <p role="status">{status}</p>
+        <p
+          className={`td-badge ${
+            /失败|错误|不能|不可|拒绝/.test(status)
+              ? 'td-badge--danger'
+              : /警告|注意|未配置/.test(status)
+                ? 'td-badge--warning'
+                : /成功|已|完成/.test(status)
+                  ? 'td-badge--success'
+                  : 'td-badge--info'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          {status}
+        </p>
         <button className="secondary-button" type="button" onClick={() => save(true)} disabled={busy}>
           <PlugZap aria-hidden="true" size={15} strokeWidth={2} />
           测试连接

@@ -319,7 +319,23 @@ export function App() {
         )}
       </section>
 
-      {status && <p className="status" role="status">{status}</p>}
+      {status && (
+        <p
+          className={`td-badge ${
+            /失败|错误|不能|不可|拒绝/.test(status)
+              ? 'td-badge--danger'
+              : /警告|注意|未配置|即将|接近/.test(status)
+                ? 'td-badge--warning'
+                : /成功|已|完成|切换/.test(status)
+                  ? 'td-badge--success'
+                  : 'td-badge--info'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          {status}
+        </p>
+      )}
 
       <footer>
         <span className={settings?.hasApiKey ? 'ready-dot' : 'idle-dot'} aria-hidden="true" />

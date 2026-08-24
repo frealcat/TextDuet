@@ -1208,3 +1208,121 @@ button:disabled {
     animation: spin 800ms linear infinite;
   }
 }
+
+
+/* ============================================================
+   TextDuet Design System v1.0 — v2 visual upgrade
+   See design-system/MASTER.md
+   ============================================================ */
+
+/* Google Fonts: Noto Serif for editorial accents (h1, eyebrow, step). */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,500;0,600;0,700&family=Inter:wght@400;500;600;700&display=swap');
+
+/* Use Inter as UI sans; Noto Serif for editorial accents. */
+:root {
+  --td-font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+                "Microsoft YaHei", Roboto, "Helvetica Neue", sans-serif;
+  --td-font-serif: "Noto Serif", "Source Han Serif SC", "Songti SC",
+                   Georgia, "Times New Roman", serif;
+  --td-font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+  --td-ease: cubic-bezier(0.32, 0.72, 0.32, 1);
+  --td-press-scale: 0.98;
+}
+
+body {
+  font-family: var(--td-font-ui);
+}
+
+h1,
+.section-heading h2,
+.step {
+  font-family: var(--td-font-serif);
+  letter-spacing: -0.005em;
+}
+
+.eyebrow {
+  font-family: var(--td-font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* .td-badge: state indicator with icon + text. Colors are not the
+   only signal; every variant pairs a background + border + icon glyph. */
+.td-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.td-badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.td-badge--neutral { color: var(--td-text-muted); background: var(--td-surface-muted); border-color: var(--td-border); }
+.td-badge--success { color: var(--td-success); background: rgba(21, 128, 61, 0.10); border-color: rgba(21, 128, 61, 0.30); }
+.td-badge--warning { color: var(--td-warning); background: rgba(180, 83, 9, 0.10); border-color: rgba(180, 83, 9, 0.30); }
+.td-badge--danger  { color: var(--td-danger);  background: rgba(185, 28, 28, 0.10); border-color: rgba(185, 28, 28, 0.30); }
+.td-badge--info    { color: var(--td-info);    background: rgba(30, 64, 175, 0.10); border-color: rgba(30, 64, 175, 0.30); }
+.td-badge--primary { color: var(--td-primary); background: var(--td-primary-soft); border-color: rgba(154, 79, 30, 0.30); }
+
+/* Primary button: press scale + smooth color transitions. */
+.primary-button {
+  transition: background-color 150ms var(--td-ease), transform 80ms var(--td-ease),
+              box-shadow 150ms var(--td-ease);
+}
+.primary-button:not(:disabled):active {
+  transform: scale(var(--td-press-scale));
+}
+.primary-button:not(:disabled):focus-visible {
+  box-shadow: 0 0 0 3px var(--td-focus-ring);
+}
+
+/* Card hover: subtle elevation, no layout shift. */
+.settings-card,
+.eyebrow {
+  transition: border-color 150ms var(--td-ease), box-shadow 200ms var(--td-ease);
+}
+.settings-card:hover {
+  border-color: var(--td-border-strong);
+}
+
+/* cursor-pointer on every interactive control. */
+button,
+.settings-card [role="button"],
+[role="button"] {
+  cursor: pointer;
+}
+
+/* Z-index scale: 10 popup, 20 menu, 30 popover, 50 modal. */
+.settings-shell { z-index: 0; }
+.popup-shell { z-index: 10; }
+.language-menu-popover { z-index: 30; }
+[role="dialog"] { z-index: 50; }
+
+/* prefers-reduced-motion: turn off all decorative animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .primary-button:not(:disabled):active {
+    transform: none;
+  }
+}
