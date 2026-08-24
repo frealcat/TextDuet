@@ -39,6 +39,7 @@ import {
   getTranslationCacheDashboard,
 } from '@/src/storage/translation-cache';
 import { normalizeProviderLanguagePreferences, resolveTargetLanguage } from '@/src/core/defaults';
+import { writeActiveModelToOriginCache } from '@/src/storage/provider-models';
 
 const provider = new OpenAiCompatibleProvider();
 const requestControllersByTab = new Map<number, Set<AbortController>>();
@@ -475,7 +476,11 @@ async function setActiveModel(model: string): Promise<OperationResult> {
   const settings = parseProviderSettings(await providerSettingsStorage.getValue());
   const normalizedModel = model.trim();
   const models = [...new Set([...(settings.models || []), normalizedModel])];
-  await providerSettingsStorage.setValue({ ...settings, model: normalizedModel, models });
+  const cached = writeActiveModelToOriginCache(
+    { ...settings, model: normalizedModel, models },
+    { model: normalizedModel, models },
+  );
+  await providerSettingsStorage.setValue(cached);
   return { ok: true, message: `已切换模型：${normalizedModel}` };
 }
 

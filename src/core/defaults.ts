@@ -11,6 +11,8 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   baseUrl: 'https://api.openai.com/v1',
   model: '',
   models: [],
+  modelByOrigin: {},
+  modelsByOrigin: {},
   apiKeyPersistence: 'session',
   targetLanguage: DEFAULT_TARGET_LANGUAGE,
   sourceLanguage: DEFAULT_SOURCE_LANGUAGE,

@@ -62,6 +62,21 @@ export const ProviderSettingsSchema = z.strictObject({
       error: '模型列表不能包含重复项',
     }),
   )),
+  modelByOrigin: z.optional(z.record(
+    z.string().check(z.minLength(1), z.maxLength(2048)),
+    z.string().check(z.trim(), z.minLength(1), z.maxLength(MODEL_NAME_MAX_LENGTH)),
+  )),
+  modelsByOrigin: z.optional(z.record(
+    z.string().check(z.minLength(1), z.maxLength(2048)),
+    z.array(
+      z.string().check(z.trim(), z.minLength(1), z.maxLength(MODEL_NAME_MAX_LENGTH)),
+    ).check(
+      z.maxLength(MAX_MODEL_OPTIONS),
+      z.refine((models) => new Set(models).size === models.length, {
+        error: '模型列表不能包含重复项',
+      }),
+    ),
+  )),
   apiKeyPersistence: z.enum(['session', 'local']),
   targetLanguage: z
     .string()

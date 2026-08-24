@@ -11,6 +11,11 @@ import {
   SUPPORTED_TARGET_LANGUAGES,
 } from '@/src/core/defaults';
 import { parseOperationResult, parsePublicProviderSettings } from '@/src/core/schemas';
+import {
+  migrateProviderModelsToOriginCache,
+  switchBaseUrlWithModelCache,
+  writeActiveModelToOriginCache,
+} from '@/src/storage/provider-models';
 import { PersistenceOptions } from './PersistenceOptions';
 import { CostSettingsCard } from './CostSettingsCard';
 import { CacheSettingsCard } from './CacheSettingsCard';
@@ -35,19 +40,31 @@ export function App() {
       .then((value) => {
         const saved = parsePublicProviderSettings(value);
         const { hasApiKey, ...providerSettings } = saved;
-        setSettings({
+        const migrated = migrateProviderModelsToOriginCache({
           ...providerSettings,
           models: normalizeModelList(providerSettings.models, providerSettings.model),
           translationColor: providerSettings.translationColor || DEFAULT_TRANSLATION_COLOR,
           sourceLanguage: providerSettings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE,
         });
+        setSettings(migrated);
         setHasSavedApiKey(hasApiKey);
       })
       .catch(() => setStatus('读取配置失败，请重新加载扩展后重试'));
   }, []);
 
   function update<K extends keyof ProviderSettings>(key: K, value: ProviderSettings[K]): void {
-    setSettings((current) => ({ ...current, [key]: value }));
+    setSettings((current) => {
+      if (key === 'baseUrl' && typeof value === 'string' && value !== current.baseUrl) {
+        return switchBaseUrlWithModelCache(current, value);
+      }
+      if (key === 'model' && typeof value === 'string') {
+        return writeActiveModelToOriginCache(current, { model: value });
+      }
+      if (key === 'models' && Array.isArray(value)) {
+        return writeActiveModelToOriginCache(current, { models: value });
+      }
+      return { ...current, [key]: value };
+    });
   }
 
   function selectPreset(preset: (typeof PROVIDER_PRESETS)[number]): void {

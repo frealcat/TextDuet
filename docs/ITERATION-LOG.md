@@ -1043,7 +1043,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| 状态 | 已规划；子项 A/B/C/D 待与项目所有者确认实施顺序，本轮未开始 |
+| 状态 | 进行中；A（模型 origin 独立）已完成 Agent 侧实现 + 14 项单元测试 + 验证矩阵通过；B / C 待启动 |
 | 开始日期 | 2026-08-24（立项） |
 | 所属阶段 | V1.0.1（V1.0 收口的下一修补版本） |
 | 目标 | 修复 TD-2026-021 项目所有者反馈的 3 个使用问题，并补齐 PRD §12 自定义端点真实连接偏差；为 0.1.0 切到"已发布"补齐前置条件 |
@@ -1117,6 +1117,17 @@
 - 本轮不启动 V1.x/V2 候选池（快捷键 / Anthropic / Gemini / 术语表 / 划词增强等）按 `PRODUCT-ROADMAP.md §2` 推迟。
 
 TD-2026-022-D 项目所有者验收反馈（2026-08-24）：项目所有者已在本机 Chrome 完成 1 个自定义兼容端点（OpenRouter 或硅基流动任选其一）的真实连接 + 连接测试 + 普通文章页翻译往返；连接测试返回成功，翻译逐段渲染，实际 usage 写入本地账本，PRD §12 自定义端点偏差补齐。该反馈关闭 TD-2026-022-D；Agent 立刻转入 A/B/C 实现，按"路径 1：D → A → B → C"执行。
+
+TD-2026-022-A Agent 实施记录（2026-08-24）：
+
+- 新增 `src/storage/provider-models.ts`，导出 `normalizeBaseUrlOrigin` / `getModelForOrigin` / `getModelsForOrigin` / `switchBaseUrlWithModelCache` / `writeActiveModelToOriginCache` / `migrateProviderModelsToOriginCache` 6 个 helper，零运行时依赖。
+- `src/core/schemas.ts` `ProviderSettingsSchema` 新增 `modelByOrigin` 与 `modelsByOrigin` 两个 optional 字段，键为 origin，值沿用现有 `model` / `models` 的长度、去重、上限约束。
+- `src/core/defaults.ts` `DEFAULT_PROVIDER_SETTINGS` 初始化空 `modelByOrigin` / `modelsByOrigin`。
+- `entrypoints/options/App.tsx` `update` 在 `key === 'baseUrl' | 'model' | 'models'` 时调用对应 helper；`useEffect` 读取配置后跑 `migrateProviderModelsToOriginCache`。
+- `entrypoints/background.ts` `setActiveModel`（Popup 切换模型路径）写回时也调用 `writeActiveModelToOriginCache`，保证通过 Popup 切模型时 per-origin 缓存同步。
+- 新增 `tests/provider-models.test.ts` 共 14 项：origin 规范化、首次迁移、跨预设切换往返、三供应商往返保真、cache 写入、helper getter 回退、非法 baseUrl no-op。
+- 验证矩阵：`npm run typecheck` ✓；`npm test` ✓ 21 个测试文件 / 149 项；`npm run build` ✓；`npm run release:check` ✓ ZIP `textduet-0.1.0-chrome.zip` 335.70 kB；`verify-release.mjs` 安全门禁 ✓。
+- 权限 / 隐私 / 成本影响：仅数据模型与 UI 同步逻辑变更；不动 API Key 存储语义、不动 Provider 协议、不动缓存键、不动 Manifest 权限。
 
 ## 4. 新迭代模板
 
