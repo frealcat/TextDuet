@@ -177,17 +177,38 @@ describe('provider-models helpers', () => {
       });
     });
 
-    it('returns the input unchanged when the baseUrl cannot be normalized', () => {
+    it('writes the new model and list back to the active fields, not just the maps', () => {
+      const result = writeActiveModelToOriginCache(
+        {
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-4o-mini',
+          models: ['gpt-4o-mini'],
+          modelByOrigin: {},
+          modelsByOrigin: {},
+        },
+        { model: 'gpt-4.1-mini', models: ['gpt-4.1-mini', 'gpt-4o-mini'] },
+      );
+      expect(result.model).toBe('gpt-4.1-mini');
+      expect(result.models).toEqual(['gpt-4.1-mini', 'gpt-4o-mini']);
+      expect(result.modelByOrigin).toEqual({ 'https://api.openai.com': 'gpt-4.1-mini' });
+      expect(result.modelsByOrigin).toEqual({
+        'https://api.openai.com': ['gpt-4.1-mini', 'gpt-4o-mini'],
+      });
+    });
+
+    it('still writes the active field even when the baseUrl cannot be normalized', () => {
       const input = {
         baseUrl: 'not-a-url',
-        model: 'whatever',
-        models: ['whatever'] as string[],
+        model: 'old',
+        models: ['old'] as string[],
         modelByOrigin: undefined as Record<string, string> | undefined,
         modelsByOrigin: undefined as Record<string, string[]> | undefined,
       };
-      const result = writeActiveModelToOriginCache(input, { model: 'whatever' });
-      expect(result.modelByOrigin).toBeUndefined();
-      expect(result.modelsByOrigin).toBeUndefined();
+      const result = writeActiveModelToOriginCache(input, { model: 'new', models: ['new'] });
+      expect(result.model).toBe('new');
+      expect(result.models).toEqual(['new']);
+      expect(result.modelByOrigin).toEqual({});
+      expect(result.modelsByOrigin).toEqual({});
     });
   });
 

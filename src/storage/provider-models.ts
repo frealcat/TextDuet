@@ -130,8 +130,10 @@ export function switchBaseUrlWithModelCache<
 
 /**
  * Update the per-origin cache after the user edits the active `model` or
- * `models` in the UI. Also normalises the active fields so the maps stay
- * in sync (the active fields remain the canonical "current" view).
+ * `models` in the UI. Also writes the new values back to the active
+ * fields so the caller (typically `setSettings` in Options App) sees
+ * the updated state in the next render — without this round-trip the
+ * `ModelTagInput` would lose the freshly-added tag.
  */
 export function writeActiveModelToOriginCache<
   T extends {
@@ -143,23 +145,42 @@ export function writeActiveModelToOriginCache<
   },
 >(input: T, next: { model?: string; models?: readonly string[] }): T {
   const origin = normalizeBaseUrlOrigin(input.baseUrl);
-  if (!origin) return input;
 
   const modelByOrigin: OriginModelMap = { ...(input.modelByOrigin ?? {}) };
   const modelsByOrigin: OriginModelListMap = { ...(input.modelsByOrigin ?? {}) };
 
+  let activeModel = input.model;
+  let activeModels = input.models;
+
   if (next.model !== undefined) {
     const trimmed = next.model.trim();
-    if (trimmed) {
-      modelByOrigin[origin] = trimmed;
+    activeModel = trimmed;
+  }
+  if (next.models !== undefined) {
+    activeModels = trimModelList(next.models);
+  }
+
+  if (!origin) {
+    return {
+      ...input,
+      model: activeModel,
+      models: activeModels,
+      modelByOrigin,
+      modelsByOrigin,
+    };
+  }
+
+  if (next.model !== undefined) {
+    if (activeModel) {
+      modelByOrigin[origin] = activeModel;
     } else {
       delete modelByOrigin[origin];
     }
   }
   if (next.models !== undefined) {
-    const trimmedList = trimModelList(next.models);
-    if (trimmedList.length > 0) {
-      modelsByOrigin[origin] = trimmedList;
+    const finalModels = activeModels ?? [];
+    if (finalModels.length > 0) {
+      modelsByOrigin[origin] = finalModels;
     } else {
       delete modelsByOrigin[origin];
     }
@@ -167,8 +188,8 @@ export function writeActiveModelToOriginCache<
 
   return {
     ...input,
-    model: input.model,
-    models: input.models,
+    model: activeModel,
+    models: activeModels,
     modelByOrigin,
     modelsByOrigin,
   };
