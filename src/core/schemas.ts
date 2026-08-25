@@ -84,6 +84,7 @@ export const ProviderSettingsSchema = z.strictObject({
   sourceLanguage: z.optional(SourceLanguagePreferenceSchema),
   selectionQuickAction: z.optional(z.boolean()),
   headerPopupRescan: z.optional(z.boolean()),
+  language: z.optional(z.enum(['auto', 'zh-CN', 'en'])),
   displayMode: z.enum(['bilingual', 'source-only', 'translated-only']),
   translationColor: z.optional(CssColorSchema),
   customSystemPrompt: z.string().check(z.maxLength(12_000)),
