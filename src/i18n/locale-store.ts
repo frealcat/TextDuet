@@ -5,15 +5,15 @@
 // (e.g. picking a new language) only triggers one render pass per
 // subscriber per microtask.
 
-import type { LanguagePreference, Locale } from './types';
+import type { LanguagePreference, LocaleTag } from './types';
 
-let currentLocale: Locale = 'zh-CN';
+let currentLocale: LocaleTag = 'zh-CN';
 let userPreference: LanguagePreference = 'auto';
 
 const listeners = new Set<() => void>();
 let notifyScheduled = false;
 
-export function getCurrentLocale(): Locale {
+export function getCurrentLocale(): LocaleTag {
   return currentLocale;
 }
 
@@ -21,7 +21,7 @@ export function getCurrentPreference(): LanguagePreference {
   return userPreference;
 }
 
-export function setLocaleFields(locale: Locale, preference: LanguagePreference): boolean {
+export function setLocaleFields(locale: LocaleTag, preference: LanguagePreference): boolean {
   let changed = false;
   if (currentLocale !== locale) {
     currentLocale = locale;
@@ -35,7 +35,7 @@ export function setLocaleFields(locale: Locale, preference: LanguagePreference):
   return changed;
 }
 
-export function setLocaleOnly(locale: Locale): boolean {
+export function setLocaleOnly(locale: LocaleTag): boolean {
   if (currentLocale === locale) return false;
   currentLocale = locale;
   scheduleNotify();

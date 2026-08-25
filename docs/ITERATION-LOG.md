@@ -43,6 +43,7 @@
 | TD-2026-020 | M2 流式回显、页面壳层兼容与选区快捷入口稳定性 | 已验证 | M2 | 未发布 |
 | TD-2026-021 | V1.0 本地安装版收口 | 进行中 | V1.0 | 未发布 |
 | TD-2026-022 | 0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译 | 已验证 | V1.0.1 | 未发布 |
+| TD-2026-024 | 0.1.0 自定义 UI 语言（模型动态翻译字典） | 进行中 | V1.0 | 未发布 |
 | TD-2026-023 | 0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文 | 已验证 | V1.0 | 未发布 |
 
 > TD-2026-001 至 TD-2026-003 是 2026-08-17 根据当前未发布仓库状态建立的基线回溯，不代表历史上已有对应 Git commit、tag 或公开版本。
@@ -1154,6 +1155,74 @@ TD-2026-022 状态收口（2026-08-25）：
 - A / B / C / D 四子项均已 Agent 侧或项目所有者侧完成；当前可继续按 `AGENT_DEV.md §5` 进入 0.1.0 tag / push / GitHub Release 准备，前提是项目所有者再确认一次 Chrome 安装态目视验收（A / B / C 用户可见行为变化）。
 - 状态行从「A / B / C 三子项已 Agent 侧实现」调整为「A / B / C / D 四子项全部完成；待项目所有者 Chrome 安装态验收后切到已发布」。
 - ITERATION-LOG 摘要表 `TD-2026-022` 状态同步切为「已验证」。
+
+### TD-2026-024：0.1.0 自定义 UI 语言（模型动态翻译字典）
+
+| 字段 | 内容 |
+| --- | --- |
+| 状态 | 进行中；4 子项 A 类型扩展 / B 翻译流程 / C 管理 UI / D 测试与收口 |
+| 开始日期 | 2026-08-25 |
+| 所属阶段 | V1.0（0.1.0 收口） |
+| 目标 | 让用户选择非内置语种时（ja-JP / fr-FR / de-DE / ko-KR / zh-TW / ...），用其配置的 Provider 把内置 zh-CN 字典翻译到目标语种，缓存到本地，下次打开直接用 |
+
+子项 A — 类型与数据契约：
+
+- `LanguagePreference` 从 `'auto' | 'zh-CN' | 'en'` 扩展为 `'auto' | Locale | BCP-47 字符串`，允许任意 IETF 标签
+- `src/i18n/catalog.ts` 把固定 `Record<Locale, MessageDict>` 拆成 base（zh-CN / en）+ user overlay（运行时从 storage.local 加载）
+- `t()` 查表顺序：user overlay > SUPPORTED_LOCALES > zh-CN fallback > key
+- 新增 `textduet-user-locale-{tag}-{promptVersion}.json` 存储 schema，prompt 升级后旧 cache 自动失效
+
+子项 B — 翻译流程：
+
+- Options 「自定义 UI 语言」卡新增「翻译到新语言」按钮（手动触发，按项目所有者决定）
+- 触发时调一次 Provider：内置 prompt 模板 + zh-CN 字典 + target locale
+- 分批：30 key / 批（限流安全 + 进度可观察）
+- 实时进度：第 06 卡内显示「已完成 X / Y 批」
+- 错误回退：401/403/402/404/429/5xx / JSON 解析失败 → 保留 zh-CN + 顶部状态条「翻译失败：{原因}」
+
+子项 C — 管理 UI：
+
+- 「自定义 UI 语言」卡（step 06）：列出已下载 user locale 列表（条目数 / 大小 / 时间 / Provider）
+- 每条 3 个操作：重译 / 清除 / 查看 sample 文案
+- 列表为空时显示「尚未下载自定义语言」
+
+子项 D — 验证 + 文档 + release:check：
+
+- 6 项新单测（catalog 命中顺序 / user locale 加载 / 重译 / 清除 / prompt 模板完整性 / 错误回退）
+- typecheck / npm test / npm run release:check 全过
+- Manifest / 权限 / Provider 协议 / API Key 边界零变化
+- CHANGELOG Unreleased 段补一行
+
+非范围（TD-2026-024 不做）：
+
+- 不做 RTL（ar / he）布局适配；用户选 ar-SA 仍能切，UI 不镜像
+- 不做 community 共享翻译库 / 远程拉取
+- 不动 API Key 存储语义、Provider 协议、缓存键
+- 不在 Popup / 翻译请求路径里调用本流程；只用于扩展 UI 自身
+
+关键决策：
+
+- 触发时机：手动点按钮（按项目所有者决定，避免意外 Provider 调用）
+- 分批大小：30 key / 批
+- prompt 版本：v1，写死于 `src/i18n/i18n-prompt.ts`，version 字段进 cache key
+- 失败回退：保留 zh-CN + 顶部状态条
+- 隐私：用户词典仅存 `storage.local`，不离开设备
+
+权限 / 隐私 / 成本影响：
+
+- 不新增 Manifest 权限（复用 activeTab / scripting / storage / contextMenus + optional_host_permissions）
+- API Key 由 Service Worker 可信上下文读取后用于翻译请求；与现有网页翻译共用 Provider 配置
+- 每次翻译 234 key × 2 token = ~500 token output / 语种；不弹预估，UI 状态条显示进度
+- 翻译结果含 zh-CN 原文 + 目标文，无 Key / URL / 用户身份
+
+验证证据（提交时附）：
+
+- typecheck 通过
+- npm test 通过：23+ 文件 / ≥188 项（含 6 项新增）
+- npm run release:check 通过
+- Manifest 权限不变
+
+关联文档：`docs/PRD.zh-CN.md` §4 / §15、`docs/ARCHITECTURE.md`、`CHANGELOG.md`、`agent-dev/20-product-ui.md`、`agent-dev/30-engineering.md §5 §6`。
 
 ### TD-2026-023：0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文
 

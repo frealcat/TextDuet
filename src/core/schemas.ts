@@ -2,6 +2,7 @@ import * as z from 'zod/mini';
 import { isSupportedTranslationColor } from './translation-colors';
 
 const LANGUAGE_CODE_MAX_LENGTH = 64;
+const LANGUAGE_NAME_MAX_LENGTH = 64;
 const MODEL_NAME_MAX_LENGTH = 256;
 const BLOCK_ID_MAX_LENGTH = 128;
 const SOURCE_TEXT_MAX_LENGTH = 4_000;
@@ -84,7 +85,16 @@ export const ProviderSettingsSchema = z.strictObject({
   sourceLanguage: z.optional(SourceLanguagePreferenceSchema),
   selectionQuickAction: z.optional(z.boolean()),
   headerPopupRescan: z.optional(z.boolean()),
-  language: z.optional(z.enum(['auto', 'zh-CN', 'en'])),
+  // 'auto' or any BCP-47 tag (zh-CN / en built-in, ja-JP / fr-FR / de-DE / ...
+  // user-downloaded). We do NOT validate against a closed enum because
+  // the user may pick a locale we don't ship; the catalog layer falls
+  // back to zh-CN if the dictionary is missing.
+  language: z.optional(
+    z.union([
+      z.literal('auto'),
+      z.string().check(z.minLength(2), z.maxLength(LANGUAGE_CODE_MAX_LENGTH)),
+    ]),
+  ),
   displayMode: z.enum(['bilingual', 'source-only', 'translated-only']),
   translationColor: z.optional(CssColorSchema),
   customSystemPrompt: z.string().check(z.maxLength(12_000)),
@@ -363,6 +373,14 @@ export const OperationResultSchema = z.strictObject({
   message: z.optional(z.string().check(z.maxLength(2_000))),
 });
 
+/** Response shape for TRANSLATE_I18N_BATCH: translated key->string map. */
+export const I18nBatchTranslationResultSchema = z.strictObject({
+  ok: z.boolean(),
+  translations: z.optional(z.record(z.string(), z.string())),
+  model: z.optional(z.string()),
+  errorMessage: z.optional(z.string().check(z.maxLength(2_000))),
+});
+
 export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('GET_PROVIDER_SETTINGS') }),
   z.strictObject({ type: z.literal('GET_COST_DASHBOARD') }),
@@ -455,6 +473,12 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
     request: TranslationBatchRequestSchema,
   }),
   z.strictObject({
+    type: z.literal('TRANSLATE_I18N_BATCH'),
+    targetTag: z.string().check(z.minLength(2), z.maxLength(LANGUAGE_CODE_MAX_LENGTH)),
+    targetLocale: z.string().check(z.minLength(1), z.maxLength(LANGUAGE_NAME_MAX_LENGTH)),
+    sourceBatch: z.record(z.string(), z.string()),
+  }),
+  z.strictObject({
     type: z.literal('TRANSLATE_SELECTION'),
     text: z.string().check(z.trim(), z.minLength(2), z.maxLength(16_000)),
     sourceLanguage: SourceLanguagePreferenceSchema,
@@ -516,6 +540,17 @@ export function parseOperationResult(value: unknown): z.infer<typeof OperationRe
   const result = OperationResultSchema.safeParse(value);
   if (!result.success) {
     throw new Error('扩展返回的操作结果格式无效');
+  }
+  return result.data;
+}
+
+/** Parses a TRANSLATE_I18N_BATCH response from the Service Worker. */
+export function parseI18nBatchTranslationResult(
+  value: unknown,
+): z.infer<typeof I18nBatchTranslationResultSchema> {
+  const result = I18nBatchTranslationResultSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error('扩展返回的 i18n 翻译结果格式无效');
   }
   return result.data;
 }

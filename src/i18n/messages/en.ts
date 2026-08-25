@@ -339,4 +339,22 @@ export const MESSAGES_EN: MessageDict = {
   'language.option.zh-CN.description': 'Pin to zh-CN regardless of the browser language',
   'language.option.en.label': 'English',
   'language.option.en.description': 'Pin to English regardless of the browser language',
+
+  // ---- Custom UI language management (Options step 06) ----
+  // Mirrors zh-CN: see that file for behavioural details.
+  'language.custom.title': 'Custom UI language',
+  'language.custom.optional': 'Optional',
+  'language.custom.description':
+    'Click a preset to translate the extension UI using your configured model and save the result locally. The locale will load automatically next time you open Options or Popup.',
+  'language.custom.allDownloaded': 'All common presets are downloaded. Type a BCP-47 tag below for any other language.',
+  'language.custom.inputLabel': 'Custom BCP-47 tag',
+  'language.custom.translateButton': 'Translate and switch',
+  'language.custom.entriesUnit': 'entries',
+  'language.custom.listTitle': 'Downloaded custom languages',
+  'language.custom.retranslate': 'Re-translate',
+  'language.custom.remove': 'Remove',
+  'language.custom.clearAll': 'Clear all',
+  'language.custom.confirmClearAll': 'Remove every downloaded custom language? Your current language selection is not affected.',
+  'language.custom.translatePrompt': 'The currently selected language has not been downloaded yet. Press the button above to start translation.',
+  'language.custom.empty': 'No custom languages downloaded yet. Click a preset or type a BCP-47 tag to translate the UI.',
 };

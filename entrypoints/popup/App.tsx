@@ -37,7 +37,7 @@ export function App() {
       .then((value) => {
         const nextSettings = parsePublicProviderSettings(value);
         setSettings(nextSettings);
-        const pref: LanguagePreference = nextSettings.language || 'auto';
+        const pref: LanguagePreference = (nextSettings.language as LanguagePreference | undefined) || 'auto';
         applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
         setSourceLanguage(nextSettings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE);
         setTargetLanguage(nextSettings.targetLanguage);

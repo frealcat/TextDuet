@@ -24,6 +24,7 @@ import { UsageDashboardCard } from './UsageDashboardCard';
 import { CompatibilityDiagnosticsCard } from './CompatibilityDiagnosticsCard';
 import { TranslationAppearanceControls } from './TranslationAppearanceControls';
 import { ModelTagInput } from './ModelTagInput';
+import { CustomLocaleCard } from './CustomLocaleCard';
 import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
 import { applyLocale, type LanguagePreference, resolveActiveLocale, useTranslation } from '@/src/i18n';
 
@@ -51,7 +52,7 @@ export function App() {
         });
         setSettings(migrated);
         setHasSavedApiKey(hasApiKey);
-        const pref: LanguagePreference = migrated.language || 'auto';
+        const pref: LanguagePreference = (migrated.language as LanguagePreference | undefined) || 'auto';
         applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
       })
       .catch(() => setStatus('读取配置失败，请重新加载扩展后重试'));
@@ -59,7 +60,7 @@ export function App() {
 
   function update<K extends keyof ProviderSettings>(key: K, value: ProviderSettings[K]): void {
     if (key === 'language') {
-      const pref = value as LanguagePreference;
+      const pref = value as unknown as LanguagePreference;
       // Apply immediately so every t() call (including this render pass)
       // sees the new locale. The settings state is updated below.
       applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
@@ -163,7 +164,7 @@ export function App() {
         </div>
         <p className="field-hint">{t('language.section.description')}</p>
         <LanguageSelector
-          value={settings.language || 'auto'}
+          value={(settings.language as LanguagePreference | undefined) || 'auto'}
           disabled={busy}
           onChange={(value) => update('language', value)}
         />
@@ -316,6 +317,10 @@ export function App() {
       <CostSettingsCard model={settings.model} />
       <CacheSettingsCard />
       <CompatibilityDiagnosticsCard />
+      <CustomLocaleCard
+        currentLanguagePreference={(settings.language as string | undefined) || 'auto'}
+        onLocaleChange={(tag) => update('language', tag)}
+      />
 
       <div className="action-bar">
         <p

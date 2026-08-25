@@ -316,4 +316,25 @@ export const MESSAGES_ZH_CN: MessageDict = {
   'language.option.zh-CN.description': '固定使用 zh-CN 字典，忽略浏览器语言',
   'language.option.en.label': 'English',
   'language.option.en.description': 'Pin to English regardless of browser language',
+
+  // ---- Custom UI language management (Options step 06) ----
+  // Lets the user pick a language we don't ship (ja-JP, fr-FR, ...) and
+  // trigger a one-shot translation request against their configured
+  // Provider. The result lands in storage.local keyed by tag + prompt
+  // version, and is loaded on next Options / Popup open.
+  'language.custom.title': '自定义 UI 语言',
+  'language.custom.optional': '可选',
+  'language.custom.description':
+    '点击下方任一语种会用你配置的模型把插件界面翻译过去并保存到本机；之后打开 Options / Popup 即用该语言。',
+  'language.custom.allDownloaded': '所有常用语种都已下载；如需其他语种可在下方输入 BCP-47 标签。',
+  'language.custom.inputLabel': '自定义 BCP-47 标签',
+  'language.custom.translateButton': '翻译并切换',
+  'language.custom.entriesUnit': '条',
+  'language.custom.listTitle': '已下载的自定义语言',
+  'language.custom.retranslate': '重新翻译',
+  'language.custom.remove': '移除',
+  'language.custom.clearAll': '清空全部',
+  'language.custom.confirmClearAll': '确定要清空所有已下载的自定义语言吗？此操作不会影响你当前选择的语言。',
+  'language.custom.translatePrompt': '当前选择的语言尚未下载，点击上方按钮开始翻译。',
+  'language.custom.empty': '尚未下载任何自定义语言；点击常用语种或输入 BCP-47 标签开始翻译。',
 };

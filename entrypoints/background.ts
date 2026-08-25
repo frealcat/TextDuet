@@ -1,4 +1,5 @@
 import type {
+  I18nBatchTranslationResult,
   OperationResult,
   ProviderSettings,
   PublicProviderSettings,
@@ -20,6 +21,8 @@ import {
   translateStreamWithCache,
 } from '@/src/background/translation-service';
 import { OpenAiCompatibleProvider } from '@/src/providers/openai-compatible';
+import { requestFreeformCompletion, FreeformCompletionError } from '@/src/providers/freeform-completion';
+import { buildI18nBatchPrompt } from '@/src/i18n/i18n-prompt';
 import {
   getApiKey,
   providerSettingsStorage,
@@ -287,6 +290,9 @@ async function handleMessage(
       return translateBatch(message.request, assertTabSender(sender));
     case 'REQUEST_SELECTION_TRANSLATION':
       return requestSelectionTranslation(message.text, assertTabSender(sender), sender.frameId || 0);
+
+    case 'TRANSLATE_I18N_BATCH':
+      return translateI18nBatch(message);
 
     default:
       throw new Error('不支持的扩展消息');
@@ -621,4 +627,90 @@ async function restrictStorageAccess(): Promise<void> {
     localStorage.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }),
     sessionStorage.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }),
   ]);
+}
+
+// ---- User-locale dictionary translation (TD-2026-024) ----
+//
+// Drives a single batch of zh-CN UI keys through the configured
+// Provider and returns a {key -> translatedString} map. Called
+// repeatedly by Options / Popup with smaller batches to keep input
+// tokens bounded; the call site is responsible for merging results
+// and persisting via src/i18n/user-locales.
+
+async function translateI18nBatch(
+  message: Extract<RuntimeMessage, { type: 'TRANSLATE_I18N_BATCH' }>,
+): Promise<I18nBatchTranslationResult> {
+  const settings = parseProviderSettings(await providerSettingsStorage.getValue());
+  const apiKey = await getApiKey(settings.apiKeyPersistence);
+  if (!apiKey) {
+    return { ok: false, errorMessage: '请先在 01 模型服务配置 API Key' };
+  }
+  if (!settings.model.trim()) {
+    return { ok: false, errorMessage: '请先填写模型名称' };
+  }
+  const batch = message.sourceBatch;
+  const keys = Object.keys(batch);
+  if (keys.length === 0) {
+    return { ok: true, translations: {} };
+  }
+  const prompt = buildI18nBatchPrompt({
+    targetTag: message.targetTag,
+    targetLocale: message.targetLocale,
+    sourceBatch: batch,
+  });
+  try {
+    const result = await requestFreeformCompletion(
+      settings,
+      apiKey,
+      {
+        system: prompt.system,
+        user: prompt.user,
+        jsonMode: true,
+        temperature: 0.1,
+      },
+    );
+    const translations = extractI18nTranslations(result.content, keys);
+    return {
+      ok: true,
+      translations,
+      model: result.model,
+    };
+  } catch (error) {
+    if (error instanceof FreeformCompletionError) {
+      return { ok: false, errorMessage: error.message };
+    }
+    return {
+      ok: false,
+      errorMessage: error instanceof Error ? error.message : '翻译失败',
+    };
+  }
+}
+
+/**
+ * Parse the JSON object the model returned and pick only the keys we
+ * asked for. Anything else is silently dropped — the model often
+ * echoes meta fields like "target_locale" back, which we don't want.
+ */
+function extractI18nTranslations(
+  raw: string,
+  expectedKeys: string[],
+): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Some models wrap JSON in ``` fences. Strip and retry.
+    const fenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    parsed = JSON.parse(fenced);
+  }
+  if (!parsed || typeof parsed !== 'object') return {};
+  const obj = parsed as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of expectedKeys) {
+    const value = obj[key];
+    if (typeof value === 'string' && value.length > 0) {
+      out[key] = value;
+    }
+  }
+  return out;
 }

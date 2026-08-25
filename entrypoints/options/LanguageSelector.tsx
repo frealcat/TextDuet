@@ -10,10 +10,24 @@ interface LanguageSelectorProps {
 }
 
 /**
+ * Loosely validate an IETF BCP-47 tag. Matches `auto` and any tag of
+ * the form `xx` or `xx-YYYY` where xx is letters and YYYY is letters
+ * / digits / hyphens (region, script, variant). Same regex used in
+ * the schema validator so the UI can pre-empt the schema error.
+ */
+function isValidLocaleTag(value: string): boolean {
+  if (value === 'auto') return true;
+  return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/.test(value);
+}
+
+/**
  * Renders the accessible language selector as a controlled radio group.
  *
  * Sits as the FIRST card on the Options page (per TD-2026-023 spec) and
- * lets the user pin the locale or follow the browser default.
+ * lets the user pin the locale or follow the browser default. The
+ * "Custom…" entry lets the user type any BCP-47 tag (e.g. ja-JP) —
+ * selecting it kicks off the user-locale translation flow
+ * (TD-2026-024).
  */
 export function LanguageSelector({
   value,
@@ -25,13 +39,8 @@ export function LanguageSelector({
       className="language-selector"
       value={value}
       onValueChange={(nextValue) => {
-        if (
-          nextValue === 'auto'
-          || nextValue === 'zh-CN'
-          || nextValue === 'en'
-        ) {
-          onChange(nextValue);
-        }
+        if (!isValidLocaleTag(nextValue)) return;
+        onChange(nextValue as LanguagePreference);
       }}
       disabled={disabled}
     >

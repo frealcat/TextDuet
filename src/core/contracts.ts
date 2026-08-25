@@ -7,6 +7,7 @@ import type {
   CostSettlementSchema,
   CompatibilityPageSnapshotSchema,
   CompatibilityDiagnosticSchema,
+  I18nBatchTranslationResultSchema,
   ModelUsageSchema,
   OfficialModelPricingSchema,
   ProviderBalanceSchema,
@@ -41,6 +42,7 @@ export type TranslationBatchRequest = z.infer<typeof TranslationBatchRequestSche
 export type TranslationBatchResponse = z.infer<typeof TranslationBatchResponseSchema>;
 export type PublicProviderSettings = z.infer<typeof PublicProviderSettingsSchema>;
 export type OperationResult = z.infer<typeof OperationResultSchema>;
+export type I18nBatchTranslationResult = z.infer<typeof I18nBatchTranslationResultSchema>;
 export type RuntimeMessage = z.infer<typeof RuntimeMessageSchema>;
 export type ModelUsage = z.infer<typeof ModelUsageSchema>;
 export type CostPrice = z.infer<typeof CostPriceSchema>;

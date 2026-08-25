@@ -23,6 +23,7 @@ import {
   type InterpolationParams,
   type LanguagePreference,
   type Locale,
+  type LocaleTag,
   type MessageDict,
   missingKeyFallback,
   SUPPORTED_LOCALES,
@@ -40,7 +41,14 @@ import {
   subscribeToLocaleChanges,
 } from './locale-store';
 
-const CATALOGS: Record<Locale, MessageDict> = {
+import {
+  clearUserLocale,
+  getUserLocale,
+  listUserLocales,
+  setUserLocale,
+} from './user-locales';
+
+const BASE_CATALOGS: Record<Locale, MessageDict> = {
   'zh-CN': MESSAGES_ZH_CN,
   en: MESSAGES_EN,
 };
@@ -49,11 +57,11 @@ export function setLanguagePreference(pref: LanguagePreference): void {
   setPreferenceOnly(pref);
 }
 
-export function setLocale(locale: Locale): void {
+export function setLocale(locale: LocaleTag): void {
   setLocaleOnly(locale);
 }
 
-export function getLocale(): Locale {
+export function getLocale(): LocaleTag {
   return getCurrentLocale();
 }
 
@@ -61,7 +69,7 @@ export function getUserLanguagePreference(): LanguagePreference {
   return getCurrentPreference();
 }
 
-export function resolveActiveLocale(): Locale {
+export function resolveActiveLocale(): LocaleTag {
   const pref = getCurrentPreference();
   if (pref !== 'auto') return pref;
   return detectBrowserLocale();
@@ -73,7 +81,7 @@ export function resolveActiveLocale(): Locale {
  * LanguageSelector onChange handler so a user action takes effect
  * immediately. Re-renders all subscribers via `useTranslation`.
  */
-export function applyLocale(locale: Locale, preference: LanguagePreference): void {
+export function applyLocale(locale: LocaleTag, preference: LanguagePreference): void {
   setLocaleFields(locale, preference);
 }
 
@@ -88,7 +96,7 @@ export function applyLocale(locale: Locale, preference: LanguagePreference): voi
  * already re-render for other reasons (e.g. a click handler), calling
  * `t()` directly is fine.
  */
-export function useTranslation(): { t: typeof t; locale: Locale } {
+export function useTranslation(): { t: typeof t; locale: LocaleTag } {
   const locale = useSyncExternalStore(
     subscribeToLocaleChanges,
     getCurrentLocale,
@@ -98,18 +106,37 @@ export function useTranslation(): { t: typeof t; locale: Locale } {
 }
 
 /**
- * Localize `key`. Optionally accepts an explicit `locale` to override the
- * current locale (useful in tests and for one-off log messages).
+ * Localize `key`. Lookup order:
+ *   1. user-downloaded locale (storage.local + memory cache)
+ *   2. built-in catalog (zh-CN / en)
+ *   3. zh-CN fallback
+ *   4. the key itself + console.warn (so UI stays usable)
  */
 export function t(
   key: string,
   params?: InterpolationParams,
-  locale: Locale = getCurrentLocale(),
+  locale: LocaleTag = getCurrentLocale(),
 ): string {
-  const raw = CATALOGS[locale]?.[key]
-    ?? CATALOGS[DEFAULT_LOCALE]?.[key]
+  const raw = lookupCatalog(locale, key)
+    ?? lookupCatalog(DEFAULT_LOCALE, key)
     ?? missingKeyFallback(key, locale);
   return interpolate(raw, params);
+}
+
+function lookupCatalog(locale: string, key: string): string | undefined {
+  // User-downloaded locales win (so users can fix imperfect built-ins).
+  const userDict = getUserLocale(locale);
+  const fromUser = userDict?.[key];
+  if (fromUser) return fromUser;
+  // Built-in catalogs (only Locale values match this Record).
+  if (isLocale(locale)) {
+    return BASE_CATALOGS[locale]?.[key];
+  }
+  return undefined;
+}
+
+function isLocale(value: string): value is Locale {
+  return (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
 
 function interpolate(template: string, params?: InterpolationParams): string {
@@ -120,6 +147,21 @@ function interpolate(template: string, params?: InterpolationParams): string {
   });
 }
 
-export type { Locale, LanguagePreference, InterpolationParams, MessageDict } from './types';
+export {
+  clearAllUserLocales,
+  clearUserLocale,
+  getUserLocale,
+  hasUserLocale,
+  listUserLocales,
+  loadAllUserLocales,
+  resetUserLocaleCacheForTest,
+  setStorageBackend,
+  setUserLocale,
+  type UserLocaleRecord,
+} from './user-locales';
+
+export { translateUiTo, type Fetcher, type TranslateProgress, type TranslateUiToOptions, type TranslateUiToResult } from './translate-dictionary';
+
+export type { Locale, LocaleTag, LanguagePreference, InterpolationParams, MessageDict } from './types';
 export { DEFAULT_LOCALE, SUPPORTED_LOCALES, missingKeyFallback } from './types';
 export { resolveLocaleFromLanguage, detectBrowserLocale } from './detect';
