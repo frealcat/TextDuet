@@ -4,6 +4,7 @@ import type { CostDashboard, CostSettings, RuntimeMessage } from '@/src/core/con
 import { getLocalDateKey } from '@/src/core/cost';
 import { DEFAULT_COST_SETTINGS } from '@/src/core/defaults';
 import { parseCostDashboard, parseOperationResult } from '@/src/core/schemas';
+import { t } from '@/src/i18n';
 
 interface CostSettingsCardProps {
   model: string;
@@ -97,7 +98,7 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
       <div className="section-heading">
         <div>
           <span className="step">05</span>
-          <h2 id="cost-heading">费用提醒设置</h2>
+          <h2 id="cost-heading">{t('cost.section.title')}</h2>
         </div>
         <span className="badge">
           <CircleDollarSign aria-hidden="true" size={12} strokeWidth={2} />
@@ -115,12 +116,12 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
           checked={settings.price.enabled}
           onChange={(event) => updatePrice('enabled', event.target.checked)}
         />
-        <span>为当前模型启用费用预估</span>
+        <span>{t('cost.price.enableLabel')}</span>
       </label>
 
       <div className="cost-grid">
         <label>
-          <span>币种</span>
+          <span>{t('cost.price.currency')}</span>
           <select
             value={settings.price.currency}
             onChange={(event) =>
@@ -133,7 +134,7 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
           </select>
         </label>
         <label>
-          <span>每百万输入 token</span>
+          <span>{t('cost.price.inputPerMillion')}</span>
           <input
             type="number"
             min="0"
@@ -143,7 +144,7 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
           />
         </label>
         <label>
-          <span>每百万输出 token</span>
+          <span>{t('cost.price.outputPerMillion')}</span>
           <input
             type="number"
             min="0"
@@ -165,7 +166,7 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
             checked={settings.budget.enabled}
             onChange={(event) => updateBudget('enabled', event.target.checked)}
           />
-          <span>启用每日预算提醒</span>
+          <span>{t('cost.budget.enableLabel')}</span>
         </label>
         <label>
           <span>每日预算（{settings.price.currency}）</span>
@@ -177,17 +178,17 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
             onChange={(event) => updateBudget('dailyLimit', Number(event.target.value))}
           />
         </label>
-        <small>达到 50%、80%、100% 时各提醒一次；100% 不会自动阻止翻译。</small>
+        <small>{t('cost.budget.thresholdsNote')}</small>
       </div>
 
       {today?.budgetEnabled && (
         <div className="today-summary">
-          <span>今日预算进度</span>
+          <span>{t('cost.budget.todaySummary')}</span>
           <strong>{today.budgetPercentage.toFixed(0)}%</strong>
           <progress max="100" value={Math.min(today.budgetPercentage, 100)}>
             {today.budgetPercentage.toFixed(0)}%
           </progress>
-          <small className="budget-copy">达到 100% 仅提醒，由你决定是否继续。</small>
+          <small className="budget-copy">{t('cost.budget.fullyReached')}</small>
         </div>
       )}
 

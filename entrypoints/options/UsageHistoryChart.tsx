@@ -13,6 +13,7 @@ import {
 import { CanvasRenderer } from 'echarts/renderers';
 import type { UsageHistoryDashboard, UsageModelSeries } from '@/src/core/contracts';
 import { formatTokenAxisValue, getTokenAxisScale } from '@/src/core/usage-history';
+import { t } from '@/src/i18n';
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 

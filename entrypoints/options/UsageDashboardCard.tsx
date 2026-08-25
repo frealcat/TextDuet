@@ -15,6 +15,7 @@ import {
   parseUsageHistoryDashboard,
 } from '@/src/core/schemas';
 import { UsageHistoryChart } from './UsageHistoryChart';
+import { t } from '@/src/i18n';
 
 interface UsageDashboardCardProps {
   baseUrl: string;
@@ -132,7 +133,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
       <div className="section-heading">
         <div>
           <span className="step">04</span>
-          <h2 id="usage-heading">Token 用量</h2>
+          <h2 id="usage-heading">{t('usage.section.title')}</h2>
         </div>
         <span className="badge">
           <Activity aria-hidden="true" size={12} strokeWidth={2} />
@@ -145,23 +146,23 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
         不读取或替代厂商账单。
       </p>
 
-      <div className="usage-total-grid" aria-label="最近 60 天 token 汇总">
+      <div className="usage-total-grid" aria-label={t('最近 60 天 token 汇总')}>
         <UsageTotal label="输入 token" value={history?.totalInputTokens || 0} />
         <UsageTotal label="输出 token" value={history?.totalOutputTokens || 0} />
         <UsageTotal label="总计 token" value={total} />
       </div>
 
       {!history ? (
-        <div className="usage-chart-state" role="status">正在读取本地用量…</div>
+        <div className="usage-chart-state" role="status">{t('usage.loading')}</div>
       ) : !history.isLedgerAvailable ? (
-        <div className="usage-chart-state warning">本地账本暂时不可用，当前无法展示历史用量。</div>
+        <div className="usage-chart-state warning">{t('usage.unavailable')}</div>
       ) : total === 0 ? (
-        <div className="usage-chart-state">最近 60 天暂无 Provider 返回的 token 用量。</div>
+        <div className="usage-chart-state">{t('usage.empty')}</div>
       ) : (
         <div className="model-usage-dashboard">
           <div className="model-usage-toolbar">
-            <span>按模型查看每日输入 / 输出</span>
-            <div className="model-filter-list" role="group" aria-label="选择用量模型">
+            <span>{t('usage.toolbar.label')}</span>
+            <div className="model-filter-list" role="group" aria-label={t('选择用量模型')}>
               {history.models.map((series) => {
                 const key = getModelSeriesKey(series);
                 return (
@@ -179,7 +180,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
             </div>
           </div>
           {selectedSeries && <UsageHistoryChart dashboard={history} series={selectedSeries} />}
-          <div className="model-usage-list" aria-label="各模型最近 60 天 token 汇总">
+          <div className="model-usage-list" aria-label={t('各模型最近 60 天 token 汇总')}>
             {history.models.map((series) => (
               <div key={getModelSeriesKey(series)}>
                 <strong>{series.model}</strong>
@@ -214,7 +215,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
           <div className="provider-balance-heading">
             <div>
               <WalletCards aria-hidden="true" size={16} strokeWidth={2} />
-              <strong>DeepSeek 账户余额</strong>
+              <strong>{t('usage.balance.title')}</strong>
             </div>
             <button
               className="secondary-button compact-button"
@@ -256,7 +257,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
               </a>
             </>
           ) : (
-            <small>使用当前已保存的 DeepSeek API Key 查询；余额不会写入本地账本。</small>
+            <small>{t('usage.balance.notice')}</small>
           )}
         </div>
       )}

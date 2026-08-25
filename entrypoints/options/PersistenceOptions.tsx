@@ -1,6 +1,7 @@
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import { HardDrive, ShieldCheck } from 'lucide-react';
 import type { ApiKeyPersistence } from '@/src/core/contracts';
+import { t } from '@/src/i18n';
 
 interface PersistenceOptionsProps {
   value: ApiKeyPersistence;
@@ -30,8 +31,8 @@ export function PersistenceOptions({
           <ShieldCheck size={18} strokeWidth={2} />
         </span>
         <span className="radio-copy">
-          <strong>仅本次浏览器会话</strong>
-          <small>推荐。关闭浏览器后自动清除，需要下次重新输入。</small>
+          <strong>{t('persistence.session.title')}</strong>
+          <small>{t('persistence.session.description')}</small>
         </span>
         <span className="radio-control" aria-hidden="true">
           <RadioGroup.Indicator className="radio-indicator" />
@@ -42,8 +43,8 @@ export function PersistenceOptions({
           <HardDrive size={18} strokeWidth={2} />
         </span>
         <span className="radio-copy">
-          <strong>持久保存在本机</strong>
-          <small>使用更方便，但浏览器扩展本地存储并不是加密保险箱。</small>
+          <strong>{t('persistence.local.title')}</strong>
+          <small>{t('persistence.local.description')}</small>
         </span>
         <span className="radio-control" aria-hidden="true">
           <RadioGroup.Indicator className="radio-indicator" />

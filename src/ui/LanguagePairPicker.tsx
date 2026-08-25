@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { SUPPORTED_SOURCE_LANGUAGES, SUPPORTED_TARGET_LANGUAGES, DEFAULT_TARGET_LANGUAGE, resolveSystemLanguage } from '@/src/core/defaults';
+import { t } from '@/src/i18n';
 
 interface LanguagePairPickerProps {
   sourceLanguage: string;
@@ -11,7 +12,7 @@ interface LanguagePairPickerProps {
 
 export function LanguagePairPicker({ sourceLanguage, targetLanguage, onChange, compact = false }: LanguagePairPickerProps) {
   return (
-    <div className={compact ? 'language-pair language-pair-compact' : 'language-pair'} aria-label="语言方向">
+    <div className={compact ? 'language-pair language-pair-compact' : 'language-pair'} aria-label={t('语言方向')}>
       <LanguageMenu label="当前语言" value={sourceLanguage} options={SUPPORTED_SOURCE_LANGUAGES} onChange={(value) => onChange(value, targetLanguage)} />
       <span className="language-pair-arrow" aria-hidden="true">→</span>
       <LanguageMenu label="翻译到" value={targetLanguage} options={[{ value: DEFAULT_TARGET_LANGUAGE, label: `跟随系统（${resolveSystemLanguage()}）` }, ...SUPPORTED_TARGET_LANGUAGES]} onChange={(value) => onChange(sourceLanguage, value)} />

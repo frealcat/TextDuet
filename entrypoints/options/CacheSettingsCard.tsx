@@ -5,6 +5,7 @@ import {
   parseOperationResult,
   parseTranslationCacheDashboard,
 } from '@/src/core/schemas';
+import { t } from '@/src/i18n';
 
 export function CacheSettingsCard() {
   const [dashboard, setDashboard] = useState<TranslationCacheDashboard | null>(null);
@@ -59,7 +60,7 @@ export function CacheSettingsCard() {
       <div className="section-heading">
         <div>
           <span className="step">06</span>
-          <h2 id="cache-heading">本地翻译缓存</h2>
+          <h2 id="cache-heading">{t('cache.section.title')}</h2>
         </div>
         <span className="badge">
           <Database aria-hidden="true" size={12} strokeWidth={2} />
@@ -73,11 +74,11 @@ export function CacheSettingsCard() {
 
       <div className="cache-summary" aria-live="polite">
         <div>
-          <span>缓存条目</span>
+          <span>{t('cache.summary.entries')}</span>
           <strong>{dashboard ? dashboard.entryCount : '读取中…'}</strong>
         </div>
         <div>
-          <span>本地占用</span>
+          <span>{t('cache.summary.usage')}</span>
           <strong>
             {dashboard
               ? `${formatBytes(dashboard.sizeBytes)} / ${formatBytes(dashboard.maxSizeBytes)}`
@@ -89,7 +90,7 @@ export function CacheSettingsCard() {
       </div>
 
       {dashboard && !dashboard.isAvailable && (
-        <p className="cost-warning">本地缓存暂时不可用；翻译仍可继续，但不会复用或保存译文。</p>
+        <p className="cost-warning">{t('cache.unavailable')}</p>
       )}
       <p className="card-status" role="status">{status}</p>
       <div className="card-actions">

@@ -25,6 +25,7 @@ import { CompatibilityDiagnosticsCard } from './CompatibilityDiagnosticsCard';
 import { TranslationAppearanceControls } from './TranslationAppearanceControls';
 import { ModelTagInput } from './ModelTagInput';
 import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
+import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
 
 export function App() {
   const [settings, setSettings] = useState<ProviderSettings>(DEFAULT_PROVIDER_SETTINGS);
@@ -49,6 +50,8 @@ export function App() {
         });
         setSettings(migrated);
         setHasSavedApiKey(hasApiKey);
+        const pref: LanguagePreference = migrated.language || 'auto';
+        applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
       })
       .catch(() => setStatus('读取配置失败，请重新加载扩展后重试'));
   }, []);
@@ -137,8 +140,8 @@ export function App() {
   return (
     <main className="settings-shell">
       <header>
-        <div className="eyebrow">本地优先 · 用户自带模型</div>
-        <h1>连接你的翻译模型</h1>
+        <div className="eyebrow">{t('options.brand.eyebrow')}</div>
+        <h1>{t('options.brand.title')}</h1>
         <p>
           网页文本会从浏览器直接发送给你选择的模型服务商，不经过本项目的服务器。
         </p>
@@ -148,7 +151,7 @@ export function App() {
         <div className="section-heading">
           <div>
             <span className="step">01</span>
-            <h2 id="provider-heading">模型服务</h2>
+            <h2 id="provider-heading">{t('options.section.provider.title')}</h2>
           </div>
           <span className={hasSavedApiKey ? 'badge success' : 'badge'}>
             <KeyRound aria-hidden="true" size={12} strokeWidth={2} />
@@ -156,7 +159,7 @@ export function App() {
           </span>
         </div>
 
-        <div className="preset-row" aria-label="服务商预设">
+        <div className="preset-row" aria-label={t('options.providerPresets.aria')}>
           {PROVIDER_PRESETS.map((preset) => (
             <button
               className={settings.baseUrl === preset.baseUrl ? 'preset active' : 'preset'}
@@ -179,9 +182,9 @@ export function App() {
               placeholder="https://api.example.com/v1"
               spellCheck={false}
             />
-            <small>插件会自动追加 <code>/chat/completions</code></small>
+            <small>{t('options.apiBaseUrl.pathNote')}<code>/chat/completions</code></small>
             {selectedPreset?.id === 'qwen' ? (
-              <small>使用阿里云百炼 OpenAI 兼容模式；请填写百炼控制台中已开通的模型名称。</small>
+              <small>{t('options.apiBaseUrl.qwenNote')}</small>
             ) : null}
           </label>
 
@@ -214,12 +217,12 @@ export function App() {
         <div className="section-heading">
           <div>
             <span className="step">02</span>
-            <h2 id="privacy-heading">密钥与默认偏好</h2>
+            <h2 id="privacy-heading">{t('options.section.preferences.title')}</h2>
           </div>
         </div>
 
         <fieldset>
-          <legend>API Key 保存方式</legend>
+          <legend>{t('options.apiKey.persistenceLegend')}</legend>
           <PersistenceOptions
             value={settings.apiKeyPersistence}
             disabled={busy}
@@ -247,8 +250,8 @@ export function App() {
             checked={settings.selectionQuickAction === true}
             onChange={(event) => update('selectionQuickAction', event.target.checked)}
           />
-          <span>选中文字后显示快捷翻译图标</span>
-          <small>关闭后仍可通过右键菜单翻译选区。</small>
+          <span>{t('options.quickAction.label')}</span>
+          <small>{t('options.quickAction.hint')}</small>
         </label>
 
         <label className="quick-action-toggle">
@@ -257,7 +260,7 @@ export function App() {
             checked={settings.headerPopupRescan === true}
             onChange={(event) => update('headerPopupRescan', event.target.checked)}
           />
-          <span>页面顶部菜单的弹出内容也参与翻译</span>
+          <span>{t('options.headerPopup.label')}</span>
           <small>
             适用于 GitHub / Stack Overflow 这类点击头像后挂出的菜单。
             开启后点击顶部菜单会触发一次额外重扫，关闭则只翻译主文档流。
@@ -269,16 +272,16 @@ export function App() {
         <div className="section-heading">
           <div>
             <span className="step">03</span>
-            <h2 id="prompt-heading">高级翻译指令</h2>
+            <h2 id="prompt-heading">{t('options.section.prompt.title')}</h2>
           </div>
-          <span className="optional">可选</span>
+          <span className="optional">{t('options.section.prompt.optional')}</span>
         </div>
         <label>
-          <span className="sr-only">自定义系统提示词</span>
+          <span className="sr-only">{t('options.prompt.aria')}</span>
           <textarea
             value={settings.customSystemPrompt}
             onChange={(event) => update('customSystemPrompt', event.target.value)}
-            placeholder="留空时使用内置的安全翻译提示词。后续可在这里加入术语、文风或行业要求。"
+            placeholder={t('options.prompt.placeholder')}
           />
         </label>
       </section>

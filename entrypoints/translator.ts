@@ -39,6 +39,7 @@ import {
 import { resolveSiteRule } from '@/src/translator/site-rules';
 import { collectStyleContext } from '@/src/translator/style-context';
 import { captureSelectionAnchor, getCapturedSelection, renderSelectionError, renderSelectionTranslation } from '@/src/translator/selection-translation';
+import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
 
 const INSTALL_MARKER = '__textDuetInstalled';
 type TranslatorGlobal = typeof globalThis & {
@@ -82,6 +83,18 @@ export default defineUnlistedScript(() => {
   }
   translatorGlobal[INSTALL_MARKER] = true;
 
+  // Apply the user's language preference for in-page messages.
+  // The translator script does not have direct access to providerSettings,
+  // so it reads browser locale as a reasonable default. The actual
+  // language is set by the Options or Popup App via runtime messages
+  // (future work) or by reading navigator.language here.
+  try {
+    const pref: LanguagePreference = 'auto';
+    applyLocale(resolveActiveLocale(), pref);
+  } catch {
+    // ignore: navigator may be unavailable in some page contexts
+  }
+
   injectPageStyles();
   browser.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => {
     const parsedMessage = parseRuntimeMessageSafely(rawMessage);
@@ -99,14 +112,14 @@ export default defineUnlistedScript(() => {
         parsedMessage.headerPopupRescan === true,
         parsedMessage.forceRefresh ?? true,
       );
-      sendResponse({ ok: true, message: '已开始翻译当前网页' });
+      sendResponse({ ok: true, message: t('translator.message.started') });
       return false;
     }
 
     if (parsedMessage.type === 'TRANSLATE_SELECTION') {
       captureSelectionAnchor();
       void translateSelection(parsedMessage.text, parsedMessage.sourceLanguage, parsedMessage.targetLanguage, parsedMessage.translationColor);
-      sendResponse({ ok: true, message: '已开始翻译选中文本' });
+      sendResponse({ ok: true, message: t('translator.message.selectionStarted') });
       return false;
     }
 
@@ -121,21 +134,21 @@ export default defineUnlistedScript(() => {
       } else {
         removeSelectionQuickAction();
       }
-      sendResponse({ ok: true, message: '选区快捷翻译设置已更新' });
+      sendResponse({ ok: true, message: t('translator.message.quickActionUpdated') });
       return false;
     }
 
     if (parsedMessage.type === 'STOP_PAGE_TRANSLATION') {
       stopActiveRun();
-      updatePageStatus('已停止翻译，原文和已完成译文保持不变', 'stopped');
-      sendResponse({ ok: true, message: '已停止翻译' });
+      updatePageStatus(t('translator.status.stopped'), 'stopped');
+      sendResponse({ ok: true, message: t('translator.message.stopped') });
       return false;
     }
 
     if (parsedMessage.type === 'SET_PAGE_DISPLAY_MODE') {
       setTranslationDisplayMode(parsedMessage.displayMode);
       if (activeRun) activeRun.displayMode = parsedMessage.displayMode;
-      sendResponse({ ok: true, message: '显示模式已切换' });
+      sendResponse({ ok: true, message: t('translator.message.displayModeChanged') });
       return false;
     }
 
@@ -178,7 +191,7 @@ function startTranslationRun(
   removeRenderedTranslations();
   setTranslationDisplayMode(displayMode);
   setTranslationColor(translationColor);
-  updatePageStatus('正在检查当前已加载内容…', 'progress');
+  updatePageStatus(t('translator.status.checking'), 'progress');
   const runId = ++activeRunId;
   const run: TranslationRun = {
     id: runId,
@@ -255,7 +268,7 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
 
       if (candidates.length === 0) {
         if (run.translatedIds.size === 0) {
-          updatePageStatus('当前已加载区域没有找到可翻译正文，继续等待新内容', 'empty');
+          updatePageStatus(t('translator.status.empty'), 'empty');
         } else {
           updatePageStatus(
             `当前已加载内容已翻译，共 ${run.translatedIds.size} 段；继续监听滚动加载的新内容`,
@@ -272,7 +285,7 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
         run.failedBatchCount += 1;
         candidates.forEach(({ id }) => run.failedIds.add(id));
         if (isActiveRun(run.id)) {
-          updatePageStatus(error instanceof Error ? error.message : '网页翻译失败', 'error');
+          updatePageStatus(error instanceof Error ? error.message : t('translator.status.translateFailed'), 'error');
         }
       }
     }
@@ -301,7 +314,7 @@ async function translateCandidates(
     batches.map((blocks) => requestTranslationEstimate(blocks, targetLanguage, run.forceRefresh)),
   ).catch(() => []);
   const initialEstimate = summarizePageEstimates([], candidates.length);
-  updatePageStatus('正在准备首批译文…', 'progress');
+  updatePageStatus(t('translator.status.preparing'), 'progress');
 
   let recordedAmount = 0;
   let latestTodayAmount = initialEstimate.todayTotalCost;

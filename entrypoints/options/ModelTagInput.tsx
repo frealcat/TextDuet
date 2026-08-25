@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from 'react';
 import { Check, X } from 'lucide-react';
+import { t } from '@/src/i18n';
 
 const MAX_MODELS = 50;
 
@@ -64,7 +65,7 @@ export function ModelTagInput({
 
   return (
     <div className="model-tag-field">
-      <span className="field-label">可用模型</span>
+      <span className="field-label">{t('modelTag.fieldLabel')}</span>
       <div className="model-tag-input" data-disabled={disabled || undefined}>
         {models.map((model) => (
           <span className={model === activeModel ? 'model-tag active' : 'model-tag'} key={model}>
@@ -77,7 +78,7 @@ export function ModelTagInput({
             >
               {model === activeModel && <Check aria-hidden="true" size={12} strokeWidth={2.5} />}
               <span>{model}</span>
-              {model === activeModel && <small>当前</small>}
+              {model === activeModel && <small>{t('modelTag.tag.current')}</small>}
             </button>
             <button
               className="model-tag-remove"
@@ -95,7 +96,7 @@ export function ModelTagInput({
           value={draft}
           disabled={disabled}
           maxLength={256}
-          aria-label="添加模型名称或 code"
+          aria-label={t('添加模型名称或 code')}
           placeholder={models.length === 0 ? placeholder : '输入后按回车添加'}
           spellCheck={false}
           onChange={(event) => setDraft(event.target.value.replace(/,$/, ''))}
@@ -103,7 +104,7 @@ export function ModelTagInput({
           onBlur={addDraft}
         />
       </div>
-      <small>回车或逗号生成标签；点击标签切换当前模型，Popup 中也可切换。</small>
+      <small>{t('modelTag.hint')}</small>
       <span className="sr-only" aria-live="polite">{feedback}</span>
     </div>
   );

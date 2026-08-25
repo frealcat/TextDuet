@@ -6,6 +6,7 @@ import {
   parseOperationResult,
 } from '@/src/core/schemas';
 import { serializeCompatibilityDiagnostic } from '@/src/core/compatibility-diagnostics';
+import { t } from '@/src/i18n';
 
 const ISSUE_TYPES = [
   ['missed-content', '遗漏内容'],
@@ -84,7 +85,7 @@ export function CompatibilityDiagnosticsCard() {
       <div className="section-heading">
         <div>
           <span className="step">07</span>
-          <h2 id="diagnostics-heading">兼容性诊断</h2>
+          <h2 id="diagnostics-heading">{t('diagnostics.section.title')}</h2>
         </div>
         <span className="badge">
           <FileWarning aria-hidden="true" size={12} strokeWidth={2} />
@@ -99,7 +100,7 @@ export function CompatibilityDiagnosticsCard() {
 
       <div className="diagnostic-controls">
         <label className="select-field">
-          <span>问题类型</span>
+          <span>{t('diagnostics.issueType.label')}</span>
           <select
             value={issueType}
             onChange={(event) => updateIssueType(event.target.value as CompatibilityDiagnostic['issue']['type'])}
@@ -117,13 +118,13 @@ export function CompatibilityDiagnosticsCard() {
             onChange={(event) => updatePathConsent(event.target.checked)}
           />
           <span>
-            <strong>包含当前页面路径</strong>
-            <small>路径可能识别具体文章；默认不包含。</small>
+            <strong>{t('diagnostics.pathConsent.title')}</strong>
+            <small>{t('diagnostics.pathConsent.hint')}</small>
           </span>
         </label>
       </div>
 
-      <p className="diagnostic-screenshot-note">截图诊断暂未启用，不会采集或写入任何截图。</p>
+      <p className="diagnostic-screenshot-note">{t('diagnostics.screenshotNote')}</p>
 
       <div className="card-actions">
         <button className="secondary-button" type="button" onClick={generateDiagnostic} disabled={busy}>
@@ -137,7 +138,7 @@ export function CompatibilityDiagnosticsCard() {
       </div>
 
       {diagnostic && (
-        <pre className="diagnostic-preview" aria-label="兼容性诊断包预览">
+        <pre className="diagnostic-preview" aria-label={t('兼容性诊断包预览')}>
           {serializeCompatibilityDiagnostic(diagnostic)}
         </pre>
       )}

@@ -15,6 +15,7 @@ import {
   parsePageTranslationState,
   parsePublicProviderSettings,
 } from '@/src/core/schemas';
+import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
 
 export function App() {
   const [settings, setSettings] = useState<PublicProviderSettings | null>(null);
@@ -35,6 +36,8 @@ export function App() {
       .then((value) => {
         const nextSettings = parsePublicProviderSettings(value);
         setSettings(nextSettings);
+        const pref: LanguagePreference = nextSettings.language || 'auto';
+        applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
         setSourceLanguage(nextSettings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE);
         setTargetLanguage(nextSettings.targetLanguage);
         setDisplayMode(nextSettings.displayMode);
@@ -214,16 +217,16 @@ export function App() {
         </div>
         <div>
           <h1>TextDuet</h1>
-          <p>自己的模型，自己的阅读方式</p>
+          <p>{t('popup.brand.subtitle')}</p>
         </div>
       </header>
 
-      <section className="control-card" aria-label="网页翻译控制">
+      <section className="control-card" aria-label={t('网页翻译控制')}>
         <LanguagePairPicker sourceLanguage={sourceLanguage} targetLanguage={targetLanguage} onChange={(source, target) => void changeLanguage(source, target)} compact />
 
         {modelOptions.length > 1 && (
           <label>
-            <span>使用模型</span>
+            <span>{t('popup.model.label')}</span>
             <select value={settings?.model || ''} onChange={(event) => void changeModel(event.target.value)}>
               {modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
             </select>
@@ -247,7 +250,7 @@ export function App() {
             : '配置模型后开始'}
         </button>
 
-        <div className="display-segments" aria-label="网页显示模式">
+        <div className="display-segments" aria-label={t('网页显示模式')}>
           <button
             type="button"
             aria-pressed={displayMode === 'bilingual'}
@@ -275,17 +278,17 @@ export function App() {
         </div>
         <label className="quick-action-toggle">
           <input type="checkbox" checked={settings?.selectionQuickAction === true} onChange={(event) => void changeSelectionQuickAction(event.target.checked)} />
-          <span>选区快捷翻译图标</span>
+          <span>{t('popup.quickAction.label')}</span>
         </label>
       </section>
 
-      <section className="cost-card" aria-label="今日模型用量">
+      <section className="cost-card" aria-label={t('今日模型用量')}>
         <div className="cost-title">
           <span>
             <Activity aria-hidden="true" size={14} strokeWidth={2} />
             今日用量
           </span>
-          {costDashboard?.today.hasEstimatedUsage && <small>含估算</small>}
+          {costDashboard?.today.hasEstimatedUsage && <small>{t('popup.cost.estimated')}</small>}
         </div>
         {costDashboard ? (
           <>
@@ -311,11 +314,11 @@ export function App() {
               </div>
             )}
             {!costDashboard.isLedgerAvailable && (
-              <p className="ledger-warning">本地账本暂时不可用</p>
+              <p className="ledger-warning">{t('popup.cost.ledgerWarning')}</p>
             )}
           </>
         ) : (
-          <p>正在读取本地摘要…</p>
+          <p>{t('popup.cost.loading')}</p>
         )}
       </section>
 
