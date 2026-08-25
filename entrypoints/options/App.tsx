@@ -17,6 +17,7 @@ import {
   writeActiveModelToOriginCache,
 } from '@/src/storage/provider-models';
 import { PersistenceOptions } from './PersistenceOptions';
+import { LanguageSelector } from './LanguageSelector';
 import { CostSettingsCard } from './CostSettingsCard';
 import { CacheSettingsCard } from './CacheSettingsCard';
 import { UsageDashboardCard } from './UsageDashboardCard';
