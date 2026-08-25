@@ -304,4 +304,16 @@ export const MESSAGES_ZH_CN: MessageDict = {
   'translator.selection.error.format': '模型返回格式无效',
   'translator.selection.error.generic': '选区翻译失败',
   'translator.selection.quickAction.label': '翻译选中文本',
+
+  // ---- Language selector (Options 顶部) ----
+  // 用户在 Options 顶部第 00 张卡选择扩展 UI 的展示语言；auto 跟随浏览器
+  // navigator.language，命中 en-* / zh-*；未命中回退 zh-CN。
+  'language.section.title': '语言 / Language',
+  'language.section.description': '选择扩展 UI 的展示语言。Auto 会跟随浏览器语言偏好。',
+  'language.option.auto.label': 'Auto · 跟随浏览器',
+  'language.option.auto.description': '根据浏览器 navigator.language 推断；最常见的中文 / 英文环境无需切换',
+  'language.option.zh-CN.label': '简体中文',
+  'language.option.zh-CN.description': '固定使用 zh-CN 字典，忽略浏览器语言',
+  'language.option.en.label': 'English',
+  'language.option.en.description': 'Pin to English regardless of browser language',
 };

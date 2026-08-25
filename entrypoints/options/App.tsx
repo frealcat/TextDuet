@@ -147,6 +147,21 @@ export function App() {
         </p>
       </header>
 
+      <section className="settings-card" aria-labelledby="language-heading">
+        <div className="section-heading">
+          <div>
+            <span className="step">00</span>
+            <h2 id="language-heading">{t('language.section.title')}</h2>
+          </div>
+        </div>
+        <p className="field-hint">{t('language.section.description')}</p>
+        <LanguageSelector
+          value={settings.language || 'auto'}
+          disabled={busy}
+          onChange={(value) => update('language', value)}
+        />
+      </section>
+
       <section className="settings-card" aria-labelledby="provider-heading">
         <div className="section-heading">
           <div>

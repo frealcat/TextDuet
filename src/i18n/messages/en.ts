@@ -324,4 +324,19 @@ export const MESSAGES_EN: MessageDict = {
   'translator.selection.error.format': 'The model returned an invalid format',
   'translator.selection.error.generic': 'Selection translation failed',
   'translator.selection.quickAction.label': 'Translate selection',
+
+  // ---- Language selector (Options top card) ----
+  // Sits as the FIRST card on the Options page; lets the user pin the UI
+  // locale or follow the browser default. `auto` resolves via
+  // navigator.language (en-* → en, zh-* → zh-CN, else → zh-CN).
+  'language.section.title': 'Language / 语言',
+  'language.section.description':
+    'Choose the display language of the extension UI. Auto follows the browser language preference.',
+  'language.option.auto.label': 'Auto · follow browser',
+  'language.option.auto.description':
+    'Resolved from navigator.language; most Chinese and English users do not need to change this',
+  'language.option.zh-CN.label': '简体中文',
+  'language.option.zh-CN.description': 'Pin to zh-CN regardless of the browser language',
+  'language.option.en.label': 'English',
+  'language.option.en.description': 'Pin to English regardless of the browser language',
 };
