@@ -1,14 +1,24 @@
 # TextDuet 0.1.0 Release Notes
 
-> 发布日期：2026-08-24
+> 发布日期：2026-08-25（候选封版；正式发布日期待项目所有者确认）
 >
-> 适用安装包：`.output/textduet-0.1.0-chrome.zip`（336.21 kB，SHA-256 `d6b8b8feb7313b855a62aab090168bbfd157ce8d171ed2c2795d8ab98cf396df`）
+> 适用安装包：`.output/textduet-0.1.0-chrome.zip`（**356.75 kB**，SHA-256 `5c25b7ec63b944c6647b7d4d10ec6b8b941f87fb75f03741e620e926f011dc13`）
+>
+> Manifest 版本：`0.1.0`，Manifest V3
 >
 > 安装方式：Chrome 开发者模式本地加载，**不**通过 Chrome Web Store 或其他商店分发
 >
 > 许可证：Apache-2.0
 >
 > 配套 Git tag：`0.1.0`（待项目所有者按 `AGENT_DEV.md §5` 单独授权后创建）
+>
+> 验证基线（2026-08-25）：
+>
+> - `npm run typecheck` 通过
+> - `npm test` 通过：23 个测试文件 / 179 项单元测试（含 17 项 i18n runtime + 3 项 dict integrity + 2 项 dom-extraction 站点规则）
+> - `npm run build` 通过：1.05 MB 解包后总大小，9 个 chunk + 4 个图标 + icon-source.svg
+> - `npm run zip` 通过：ZIP 356.75 kB
+> - `node scripts/verify-release.mjs` 通过：13 个文本资产、Manifest 权限为 `activeTab` / `scripting` / `storage` / `contextMenus` + `optional_host_permissions: ["https://*/*"]`，无静态全站 content_scripts、无 `<all_urls>`
 
 ## 概述
 
@@ -57,6 +67,15 @@ TextDuet 是一款本地优先、用户自带模型 API 的 Chrome 双语网页�
 - Options 开关「页面顶部菜单的弹出内容也参与翻译」：开启后点击 GitHub / Stack Overflow 等头像菜单、站内搜索建议等头部弹窗内容，自动触发一次局部重扫
 - 关闭时与 0.1.0 行为一致（只翻译主文档流）
 
+### 国际化（0.1.0 收口，TD-2026-023）
+
+- 扩展 UI 完整支持 **zh-CN / en** 双语：Popup、Options 与网页状态提示
+- Options 顶部新增「语言 / Language」选择器，支持 auto / zh-CN / en 三档，持久化到 `ProviderSettings.language`
+- 浏览器语言推断：`navigator.language` 命中 `en-*` → `en`，`zh-*` → `zh-CN`，其他 → 默认 `zh-CN`
+- 零运行时依赖：自建 `src/i18n/`，无 i18next / react-intl / formatjs
+- 字典：234 个 key 1:1 对齐 zh-CN / en，21 种占位符零漂移；proper noun（TextDuet / API Key / BYOK / Provider 名称）保持原文
+- fallback 链：缺 key 时 `console.warn` + 返回 key 字符串，不抛错
+
 ### 公开页面兼容
 
 - 16 个默认 P0 公开 URL（海外社区 / 框架技术文档 / 创意设计站）
@@ -91,6 +110,9 @@ TextDuet 是一款本地优先、用户自带模型 API 的 Chrome 双语网页�
 - OpenAI 真实连接未在本机 Chrome 验收（项目所有者决策）；DeepSeek 与 1 个自定义兼容端点（OpenRouter / 硅基流动二选一）已通过
 - 0.1.0 仅 Chrome MV3；不承诺 Edge / Firefox / Safari 兼容
 - 0.1.0 仅以本地安装版形式分发；不上 Chrome Web Store、不设自动更新
+- 当前国际化仅覆盖 zh-CN / en；其他语种（ja / zh-TW / ko / fr / de 等）按社区贡献节奏进入 0.1.1+
+- 0.1.0 候选版本基于 commit `8241aca`（HEAD 含 TD-2026-022 A/B/C/D 全部修复 + TD-2026-023 i18n 收口）
+- 构建期 postcss 报警：样式中 Google Fonts `@import url(...)` 出现在非首行位置；当前不阻塞产物，但建议在 0.1.1 把字体声明移到 CSS 头部或迁出 `@import`（无网络依赖时改本地字体子集）
 
 ## 升级与回退
 

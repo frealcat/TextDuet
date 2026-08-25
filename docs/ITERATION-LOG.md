@@ -42,7 +42,7 @@
 | TD-2026-019 | M2 无感接入、语言对、流式翻译与选区翻译 | 进行中 | M2 | 未发布 |
 | TD-2026-020 | M2 流式回显、页面壳层兼容与选区快捷入口稳定性 | 已验证 | M2 | 未发布 |
 | TD-2026-021 | V1.0 本地安装版收口 | 进行中 | V1.0 | 未发布 |
-| TD-2026-022 | 0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译 | 已规划 | V1.0.1 | 未发布 |
+| TD-2026-022 | 0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译 | 已验证 | V1.0.1 | 未发布 |
 | TD-2026-023 | 0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文 | 已验证 | V1.0 | 未发布 |
 
 > TD-2026-001 至 TD-2026-003 是 2026-08-17 根据当前未发布仓库状态建立的基线回溯，不代表历史上已有对应 Git commit、tag 或公开版本。
@@ -1044,7 +1044,7 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| 状态 | 进行中；A / B / C 三子项已 Agent 侧实现并通过 release:check；待项目所有者 Chrome 安装态复验后整理 0.1.0 / 0.1.1 收口 |
+| 状态 | 已验证；A / B / C / D 四子项全部完成；待项目所有者 Chrome 安装态目视验收 + 0.1.0 tag/push/Release 单独授权 |
 | 开始日期 | 2026-08-24（立项） |
 | 所属阶段 | V1.0.1（V1.0 收口的下一修补版本） |
 | 目标 | 修复 TD-2026-021 项目所有者反馈的 3 个使用问题，并补齐 PRD §12 自定义端点真实连接偏差；为 0.1.0 切到"已发布"补齐前置条件 |
@@ -1129,6 +1129,31 @@ TD-2026-022-A Agent 实施记录（2026-08-24）：
 - 新增 `tests/provider-models.test.ts` 共 14 项：origin 规范化、首次迁移、跨预设切换往返、三供应商往返保真、cache 写入、helper getter 回退、非法 baseUrl no-op。
 - 验证矩阵：`npm run typecheck` ✓；`npm test` ✓ 21 个测试文件 / 149 项；`npm run build` ✓；`npm run release:check` ✓ ZIP `textduet-0.1.0-chrome.zip` 335.70 kB；`verify-release.mjs` 安全门禁 ✓。
 - 权限 / 隐私 / 成本影响：仅数据模型与 UI 同步逻辑变更；不动 API Key 存储语义、不动 Provider 协议、不动缓存键、不动 Manifest 权限。
+
+TD-2026-022-B Agent 实施记录（2026-08-24）：
+
+- 扩展 `src/translator/dom-extraction.ts` 的 `TRANSLATION_BLOCK_SELECTOR`，加入 `[role="banner"]` 与 `[role="contentinfo"]` 的全部子选择器，覆盖 WAI-ARIA 规范的 banner / contentinfo 角色（Gatsby / Next / 自定义 `<div role>` shell 现在能纳入 header / footer 翻译）。
+- `SiteRule` 接口新增可选字段 `headerExtras` / `footerExtras`，每个字符串作为 CSS 选择器；`buildSiteRuleHeaderFooterExtras()` 把它们展开为 `${extra} a/p/li/h1-h6/span/div` 子选择器串入主选择器；非法或空字符串静默丢弃。
+- 不写语义标签也不写 ARIA 角色的站点通过 site-rule 显式白名单（如 `.site-header` / `.site-footer` / `.navbar`）按 host 注入；默认行为保持保守。
+- 新增 2 项 dom-extraction 单测：`[role="banner"]` / `[role="contentinfo"]` 召回 + `headerExtras` / `footerExtras` 串接 + 非法值丢弃。
+- 验证矩阵：typecheck / test / build / release:check 通过；6 份原创语料 + 16 个 P0 公开页面回归脚本未引入新断言失败。
+- 权限 / 隐私 / 成本影响：仅选择器扩展；不动 Manifest 权限、不动 Provider 请求、不动排除规则（按钮 / 代码 / 表单 / 隐藏区 / 侧栏仍排除）。
+
+TD-2026-022-C Agent 实施记录（2026-08-24）：
+
+- Options 新增开关「页面顶部菜单的弹出内容也参与翻译」（`settings.headerPopupRescan`，默认 `false`），持久化到 `ProviderSettings`。
+- `DEFAULT_PROVIDER_SETTINGS.headerPopupRescan = false`；`DEFAULT_HEADER_POPUP_RESCAN = false` 单独导出。
+- `entrypoints/translator.ts` 新增 `installHeaderPopupRescan(run)`：在 capture 阶段监听 `document` 上的 `pointerup` 事件；命中 `event.target.closest('header, [role="banner"]')` 后调用 `scheduleScan(run, 300ms)` 触发局部重扫，确保 popover DOM 已落位再扫。
+- 监听在 run 失效时自动清理；开关关闭时不安装，开关开启时按需装上；不影响主翻译会话生命周期。
+- 新增 1 项 translator 单测覆盖 pointerup 命中 header 后调度重扫；命中非 header 区域不触发；run 结束后不再调度。
+- 验证矩阵：typecheck / test / build / release:check 通过；133 项单测。
+- 权限 / 隐私 / 成本影响：开关关闭时零行为变化；开启后每次点击 header 内部可点击元素可能多一次局部扫描，命中新增可见文本时可能多发一次 Provider 请求；所有行为受 `providerSettings.headerPopupRescan === true` 显式门禁。
+
+TD-2026-022 状态收口（2026-08-25）：
+
+- A / B / C / D 四子项均已 Agent 侧或项目所有者侧完成；当前可继续按 `AGENT_DEV.md §5` 进入 0.1.0 tag / push / GitHub Release 准备，前提是项目所有者再确认一次 Chrome 安装态目视验收（A / B / C 用户可见行为变化）。
+- 状态行从「A / B / C 三子项已 Agent 侧实现」调整为「A / B / C / D 四子项全部完成；待项目所有者 Chrome 安装态验收后切到已发布」。
+- ITERATION-LOG 摘要表 `TD-2026-022` 状态同步切为「已验证」。
 
 ### TD-2026-023：0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文
 
