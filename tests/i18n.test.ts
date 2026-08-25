@@ -12,10 +12,17 @@ import {
   SUPPORTED_LOCALES,
   t,
 } from '@/src/i18n';
+import {
+  flushLocaleChangesForTest,
+  subscribeToLocaleChanges,
+} from '@/src/i18n/locale-store';
 
-afterEach(() => {
+afterEach(async () => {
   // Reset module-level state after each test.
   applyLocale(DEFAULT_LOCALE, 'auto');
+  // Drain any pending microtask notifications so they don't leak into
+  // the next test.
+  await Promise.resolve();
 });
 
 describe('i18n runtime', () => {
@@ -82,6 +89,54 @@ describe('i18n runtime', () => {
       setLocale('zh-CN');
       expect(getLocale()).toBe('zh-CN');
       expect(getUserLanguagePreference()).toBe('en');
+    });
+
+    it('notifies subscribers when locale changes (microtask coalesced)', async () => {
+      const calls: string[] = [];
+      const unsubscribe = subscribeToLocaleChanges(() => {
+        calls.push(getLocale());
+      });
+      try {
+        setLocale('en');
+        setLocale('zh-CN');
+        setLocale('en');
+        // Microtask should not have fired yet (coalesced).
+        expect(calls).toEqual([]);
+        await Promise.resolve();
+        expect(calls).toEqual(['en']);
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    it('flushLocaleChangesForTest synchronously fires subscribers', () => {
+      const calls: string[] = [];
+      const unsubscribe = subscribeToLocaleChanges(() => {
+        calls.push(getLocale());
+      });
+      try {
+        setLocale('en');
+        expect(calls).toEqual([]);
+        flushLocaleChangesForTest();
+        expect(calls).toEqual(['en']);
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    it('applyLocale coalesces a single change into one notification', async () => {
+      const calls: number[] = [];
+      const unsubscribe = subscribeToLocaleChanges(() => {
+        calls.push(performance.now());
+      });
+      try {
+        applyLocale('en', 'en');
+        applyLocale('zh-CN', 'zh-CN');
+        await Promise.resolve();
+        expect(calls.length).toBe(1);
+      } finally {
+        unsubscribe();
+      }
     });
   });
 

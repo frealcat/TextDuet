@@ -25,9 +25,10 @@ import { CompatibilityDiagnosticsCard } from './CompatibilityDiagnosticsCard';
 import { TranslationAppearanceControls } from './TranslationAppearanceControls';
 import { ModelTagInput } from './ModelTagInput';
 import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
-import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
+import { applyLocale, type LanguagePreference, resolveActiveLocale, useTranslation } from '@/src/i18n';
 
 export function App() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<ProviderSettings>(DEFAULT_PROVIDER_SETTINGS);
   const [apiKey, setApiKey] = useState('');
   const [hasSavedApiKey, setHasSavedApiKey] = useState(false);
@@ -57,6 +58,12 @@ export function App() {
   }, []);
 
   function update<K extends keyof ProviderSettings>(key: K, value: ProviderSettings[K]): void {
+    if (key === 'language') {
+      const pref = value as LanguagePreference;
+      // Apply immediately so every t() call (including this render pass)
+      // sees the new locale. The settings state is updated below.
+      applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
+    }
     setSettings((current) => {
       if (key === 'baseUrl' && typeof value === 'string' && value !== current.baseUrl) {
         return switchBaseUrlWithModelCache(current, value);

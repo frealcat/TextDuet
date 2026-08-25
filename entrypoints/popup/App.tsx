@@ -15,9 +15,10 @@ import {
   parsePageTranslationState,
   parsePublicProviderSettings,
 } from '@/src/core/schemas';
-import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
+import { applyLocale, type LanguagePreference, resolveActiveLocale, useTranslation } from '@/src/i18n';
 
 export function App() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<PublicProviderSettings | null>(null);
   const [sourceLanguage, setSourceLanguage] = useState(DEFAULT_SOURCE_LANGUAGE);
   const [targetLanguage, setTargetLanguage] = useState(DEFAULT_TARGET_LANGUAGE);

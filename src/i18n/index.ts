@@ -9,6 +9,13 @@
 // - Interpolation uses {name} placeholders, e.g. t('cost.daily', { percent: 80 }).
 //   This is intentionally minimal; we do not pull in ICU MessageFormat
 //   just for a translation plugin.
+//
+// The module-level `currentLocale` is the canonical source of truth.
+// React components subscribe via `useTranslation()` (uses
+// useSyncExternalStore) so a language change triggers a re-render of
+// every Options / Popup surface that calls `t()`.
+
+import { useSyncExternalStore } from 'react';
 
 import { detectBrowserLocale, resolveLocaleFromLanguage } from './detect';
 import {
@@ -24,43 +31,70 @@ import {
 import { MESSAGES_EN } from './messages/en';
 import { MESSAGES_ZH_CN } from './messages/zh-CN';
 
+import {
+  getCurrentLocale,
+  getCurrentPreference,
+  setLocaleFields,
+  setLocaleOnly,
+  setPreferenceOnly,
+  subscribeToLocaleChanges,
+} from './locale-store';
+
 const CATALOGS: Record<Locale, MessageDict> = {
   'zh-CN': MESSAGES_ZH_CN,
   en: MESSAGES_EN,
 };
 
-let currentLocale: Locale = DEFAULT_LOCALE;
-let userPreference: LanguagePreference = 'auto';
-
 export function setLanguagePreference(pref: LanguagePreference): void {
-  userPreference = pref;
+  setPreferenceOnly(pref);
 }
 
 export function setLocale(locale: Locale): void {
-  currentLocale = locale;
+  setLocaleOnly(locale);
 }
 
 export function getLocale(): Locale {
-  return currentLocale;
+  return getCurrentLocale();
 }
 
 export function getUserLanguagePreference(): LanguagePreference {
-  return userPreference;
+  return getCurrentPreference();
 }
 
 export function resolveActiveLocale(): Locale {
-  if (userPreference !== 'auto') return userPreference;
+  const pref = getCurrentPreference();
+  if (pref !== 'auto') return pref;
   return detectBrowserLocale();
 }
 
 /**
  * Apply a complete locale resolution. Call once at the entry points
- * (Options App mount, Popup mount, translator install) to keep the
- * module-level `currentLocale` in sync with persisted preference.
+ * (Options App mount, Popup mount, translator install) and from the
+ * LanguageSelector onChange handler so a user action takes effect
+ * immediately. Re-renders all subscribers via `useTranslation`.
  */
 export function applyLocale(locale: Locale, preference: LanguagePreference): void {
-  currentLocale = locale;
-  userPreference = preference;
+  setLocaleFields(locale, preference);
+}
+
+// React 18+ only; Popup / Options / LanguageSelector are all on React 19.
+
+/**
+ * React hook that subscribes to locale changes. Returns the active
+ * `t` function bound to the current locale. Components that call
+ * `t()` will re-render automatically when the user changes language.
+ *
+ * Use this in Options / Popup render bodies; for plain call sites that
+ * already re-render for other reasons (e.g. a click handler), calling
+ * `t()` directly is fine.
+ */
+export function useTranslation(): { t: typeof t; locale: Locale } {
+  const locale = useSyncExternalStore(
+    subscribeToLocaleChanges,
+    getCurrentLocale,
+    getCurrentLocale,
+  );
+  return { t: (key, params) => t(key, params, locale), locale };
 }
 
 /**
@@ -70,7 +104,7 @@ export function applyLocale(locale: Locale, preference: LanguagePreference): voi
 export function t(
   key: string,
   params?: InterpolationParams,
-  locale: Locale = currentLocale,
+  locale: Locale = getCurrentLocale(),
 ): string {
   const raw = CATALOGS[locale]?.[key]
     ?? CATALOGS[DEFAULT_LOCALE]?.[key]
