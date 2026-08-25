@@ -43,6 +43,7 @@
 | TD-2026-020 | M2 流式回显、页面壳层兼容与选区快捷入口稳定性 | 已验证 | M2 | 未发布 |
 | TD-2026-021 | V1.0 本地安装版收口 | 进行中 | V1.0 | 未发布 |
 | TD-2026-022 | 0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译 | 已规划 | V1.0.1 | 未发布 |
+| TD-2026-023 | 0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文 | 进行中 | V1.0 | 未发布 |
 
 > TD-2026-001 至 TD-2026-003 是 2026-08-17 根据当前未发布仓库状态建立的基线回溯，不代表历史上已有对应 Git commit、tag 或公开版本。
 
@@ -1128,6 +1129,68 @@ TD-2026-022-A Agent 实施记录（2026-08-24）：
 - 新增 `tests/provider-models.test.ts` 共 14 项：origin 规范化、首次迁移、跨预设切换往返、三供应商往返保真、cache 写入、helper getter 回退、非法 baseUrl no-op。
 - 验证矩阵：`npm run typecheck` ✓；`npm test` ✓ 21 个测试文件 / 149 项；`npm run build` ✓；`npm run release:check` ✓ ZIP `textduet-0.1.0-chrome.zip` 335.70 kB；`verify-release.mjs` 安全门禁 ✓。
 - 权限 / 隐私 / 成本影响：仅数据模型与 UI 同步逻辑变更；不动 API Key 存储语义、不动 Provider 协议、不动缓存键、不动 Manifest 权限。
+
+### TD-2026-023：0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文
+
+| 字段 | 内容 |
+| --- | --- |
+| 状态 | 进行中；i18n 基础设施、字典抽取、翻译落地、Options 切换、品牌切英文正在执行 |
+| 开始日期 | 2026-08-25 |
+| 所属阶段 | V1.0（0.1.0 发布前补齐） |
+| 目标 | 让 TextDuet 以"开源项目"身份对外可读：zh-CN 与 en 全文案支持；用户可在 Options 顶部选择语言；品牌主标题用英文；保持零新依赖、零运行时不联网 |
+
+范围（4 子项）：
+
+- **A — i18n 基础设施**：零依赖自建 `src/i18n/`。导出 `t(key, params?)` 函数 + locale 解析 + 持久化。locale 解析顺序：用户在 Options 显式选择 → `navigator.language` 推断 → 默认 `zh-CN`。
+- **B — 全量字典与翻译**：抽取 Popup / Options / translator.ts 与 9 个子组件的硬编码中文字符串到 `src/i18n/messages/zh-CN.ts`（约 250–380 keys，按 section / card / status 分组）。使用 subAgent 一次性翻译到 `en.ts`，保持术语一致（API Key / Provider / Origin / BYOK 等保留为英文）。
+- **C — Options 语言选择器 + 全 UI 迁移**：在 Options 顶部添加 "语言 / Language" section，包含 auto / zh-CN / en 三个选项，持久化到 `providerSettings.language`。迁移 12 个源文件的硬编码中文为 `t('key')` 调用，原文作为 zh-CN 默认值与 fallback。
+- **D — 品牌主标题切英文**：Popup 与 Options 顶部 h1 切到 "TextDuet" + tagline "Your key. Two languages. One page."；eyebrow 文案保留双语 "本地优先 · 用户自带模型" 与 "Local-first · BYOK"。Proper noun（TextDuet / textduet）与产品 slogan 永不本地化。
+
+非范围（0.1.0 收口前不做）：
+
+- 不新增 i18n 库 / 依赖；不引入 react-intl / i18next / formatjs。
+- 不实现 RTL / 阿拉伯 / 希伯来等复杂方向；第一轮只 `zh-CN` + `en`。
+- 不做自动机翻（Provider 响应错误信息直接保留英文）。
+- 不重写 README / PRIVACY / CHANGELOG 全量英文版；仅在 `docs/` 增 `README.en.md` 概述。
+- 不暴露 `chrome.i18n.getMessage`；自建 catalog 与 WXT 默认解耦。
+
+关键决策：
+
+- 字典存储选 TypeScript 对象（`as const`），编译期可被 IDE 跳转，运行时零解析开销；不选 JSON（需要额外解析器）或 .po（需要 gettext 工具链）。
+- `t()` 默认接受 `params: Record<string, string | number>`，支持 `{name}` 占位符简单插值；不引入 ICU MessageFormat。
+- proper noun 处理：所有 `TextDuet` 字符串保持原文；`Your key. Two languages. One page.` 双语同显。
+- 旧 fallback：当 `key` 在 en / zh-CN 中都不存在时，返回 `key` 字符串 + 记一行 `console.warn`（不抛错，保留扩展可用性）。
+- Options 语言选择器位置：顶部第一张卡（`#0` 编号），`01` 为 Provider，依次顺延。
+
+权限 / 隐私 / 成本影响：
+
+- 无新增 Manifest 权限、Provider、遥测。
+- 无运行时网络请求：翻译字典是本地常量。
+- 包体积估算：en.ts 约 6–10 KB（gzip 后 ~3 KB），zh-CN.ts 保持源体积。
+- API Key / 缓存 / 账本 / 诊断边界不变。
+
+验证证据（提交时附）：
+
+- `npm run typecheck` 通过
+- `npm test` 通过：≥ 159 项 + 新增 i18n 单测 8–12 项
+- `npm run build` / `npm run release:check` 通过
+- 字典完整性单测：zh-CN 全部 key 都有 en 对应
+- Options 语言切换：切到 en 后所有可见文案 100% 英文（除 proper noun）
+- 浏览器 locale 推断：`navigator.language = 'en-US'` → fallback `en`
+
+关联文档：
+
+- `docs/PRD.zh-CN.md §15 已确认决策`（5：仓库名 textduet 与产品名 TextDuet 永不翻译）
+- `agent-dev/20-product-ui.md §1 产品表达`（品牌文案、proper noun 规则）
+- `design-system/MASTER.md`（视觉与组件契约，与 i18n 无冲突）
+- `CHANGELOG.md`（需补 Unreleased 一行）
+
+遗留与下一步：
+
+- 0.1.0 切到已发布前需补 PR / Issue 模板英文版（社区贡献入口）。
+- ja / zh-TW / ko / fr / de 等语种按社区贡献节奏纳入 0.1.2 之后的迭代。
+- `t()` 不支持复数 / 性别 / 复杂 ICU 语法；若未来需要再升级到 formatjs；当前最小够用。
+- 0.1.0 tag / push 仍待项目所有者按 `AGENT_DEV.md §5` 单独授权。
 
 ## 4. 新迭代模板
 
