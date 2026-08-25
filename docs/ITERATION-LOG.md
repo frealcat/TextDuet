@@ -43,7 +43,7 @@
 | TD-2026-020 | M2 流式回显、页面壳层兼容与选区快捷入口稳定性 | 已验证 | M2 | 未发布 |
 | TD-2026-021 | V1.0 本地安装版收口 | 进行中 | V1.0 | 未发布 |
 | TD-2026-022 | 0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译 | 已规划 | V1.0.1 | 未发布 |
-| TD-2026-023 | 0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文 | 进行中 | V1.0 | 未发布 |
+| TD-2026-023 | 0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文 | 已验证 | V1.0 | 未发布 |
 
 > TD-2026-001 至 TD-2026-003 是 2026-08-17 根据当前未发布仓库状态建立的基线回溯，不代表历史上已有对应 Git commit、tag 或公开版本。
 
@@ -1228,3 +1228,39 @@ TD-2026-022-A Agent 实施记录（2026-08-24）：
 遗留与下一步：
 - ...
 ```
+
+
+TD-2026-023 实施记录（2026-08-25）：4 子项全部 Agent 侧落地完成。
+
+- A 基础设施：src/i18n/{types,detect,index,messages/zh-CN,messages/en}.ts；
+  t(key, params?, locale?) 零依赖实现；3 步 locale 解析（用户 > navigator > zh-CN）；
+  fallback 链 console.warn + 返回 key 不抛错。
+- B 字典抽取：234 个 key 分布在 12 个源文件，按 Popup / Options / Cost /
+  Cache / Usage / Usage chart / Diagnostics / Appearance / Model tag /
+  Persistence / Language pair / Translator 12 个 group 组织。
+- C 翻译：en.ts 234 key 与 zh-CN 1:1 对齐；21 种占位符零漂移；proper noun
+  全部保留（TextDuet / API Key / BYOK / Provider 名 / 语言码）。
+- D Options 语言选择器：LanguageSelector.tsx 在 Options 顶部 step 00；
+  LanguagePreference='auto'|'zh-CN'|'en' 持久化到 providerSettings。
+  11 个源文件 + translator 共 94 处 t() 替换（71 处 JSX + 23 处对象字面量）；
+  applyLocale 钩子在 Popup mount / Options mount / translator install
+  三处生效。
+
+品牌主标题：popup h1 保持英文 `<h1>TextDuet</h1>`（proper noun）；
+options h1 走 `t('options.brand.title')`（en: 'Connect your translation model'）；
+eyebrow 走 `t('options.brand.eyebrow')`（en: 'Local-first · BYOK'）。
+
+subAgent judgment call（已在 subAgent 报告中列出 12 处）：诗化措辞意译、
+专业术语取舍等，由项目所有者 Chrome 安装态目视验收时确认。
+
+权限 / 隐私 / 成本影响：零新增 Manifest 权限 / 零网络请求 / 包体积 +20 kB
+（234 keys × 2 语言 + 基础设施）。
+
+验证：npm run typecheck 通过；npm test 通过 23 个测试文件 / 179 项
+（含 3 项 dict 完整性 + 17 项 i18n runtime）；npm run release:check
+通过 ZIP 356.75 kB；verify-release.mjs 安全门禁通过。
+
+0.1.0 tag / push / GitHub Release 仍待项目所有者按 AGENT_DEV.md §5
+单独授权。下一轮 0.1.1 候选可启动：ja / zh-TW 等更多语种、
+translator 通过 runtime message 接收显式语言选择、subAgent judgment
+call 由项目所有者 review 后微调。
