@@ -88,22 +88,22 @@ describe('i18n runtime', () => {
   describe('t() — basic lookup', () => {
     it('returns the current locale string when key exists in current locale', () => {
       applyLocale('zh-CN', 'zh-CN');
-      // The dictionaries are still being filled by the extraction subAgent.
-      // We only assert that t() does not throw and returns a string. Once
-      // both catalogs share a key, the same value should come back from
-      // either locale.
-      const value = t('i18n.test.marker');
+      // The dictionaries are populated by the extraction + translation
+      // subAgents. We only assert that t() does not throw and returns a
+      // string for any in-dict key.
+      const value = t('popup.brand.title');
       expect(typeof value).toBe('string');
+      // Brand title is always TextDuet (proper noun, not translated).
+      expect(value).toBe('TextDuet');
     });
 
     it('returns the explicit-locale string when key exists', () => {
-      const value = t('i18n.test.marker', undefined, 'en');
-      expect(typeof value).toBe('string');
+      const value = t('popup.brand.title', undefined, 'en');
+      expect(value).toBe('TextDuet');
     });
 
     it('falls back to zh-CN when the key is missing in the active locale', () => {
-      // Since both dictionaries may be empty during early-stage tests, we
-      // only assert that the fallback chain terminates without throwing.
+      // Since both dictionaries are populated, we use a synthetic key.
       setLocale('en');
       const value = t('__synthetic_missing_for_fallback_test__');
       expect(value).toBe('__synthetic_missing_for_fallback_test__');
@@ -111,7 +111,6 @@ describe('i18n runtime', () => {
 
     it('returns the key itself and warns when neither catalog has the key', () => {
       setLocale('zh-CN');
-      // suppress the expected warn so test output stays clean
       const originalWarn = console.warn;
       console.warn = () => undefined;
       try {
@@ -124,17 +123,11 @@ describe('i18n runtime', () => {
 
   describe('t() — interpolation', () => {
     it('substitutes {name} placeholders from the params object', () => {
-      // Use any key that contains a placeholder; if none exist, use a temp
-      // catalog via a missing key that returns a key with placeholders.
-      const originalWarn = console.warn;
-      console.warn = () => undefined;
-      try {
-        // Synthetic key with placeholders that is not in any catalog.
-        const out = t('__synth__ {name} - {count}', { name: 'Claude', count: 7 }, 'en');
-        expect(out).toBe('__synth__ Claude - 7');
-      } finally {
-        console.warn = originalWarn;
-      }
+      // popup.cost.inputOutput has {input} and {output} placeholders.
+      applyLocale('zh-CN', 'zh-CN');
+      const out = t('popup.cost.inputOutput', { input: 1234, output: 567 });
+      expect(out).toContain('1234');
+      expect(out).toContain('567');
     });
 
     it('leaves unknown placeholders intact', () => {
@@ -157,5 +150,46 @@ describe('i18n runtime', () => {
         console.warn = originalWarn;
       }
     });
+  });
+});
+
+describe('i18n dictionary integrity', () => {
+  it('every zh-CN key has a non-empty English counterpart', async () => {
+    const { MESSAGES_ZH_CN } = await import('@/src/i18n/messages/zh-CN');
+    const { MESSAGES_EN } = await import('@/src/i18n/messages/en');
+    const missing: string[] = [];
+    const empty: string[] = [];
+    for (const [key, zh] of Object.entries(MESSAGES_ZH_CN)) {
+      const en = MESSAGES_EN[key];
+      if (en === undefined) missing.push(key);
+      else if (typeof en !== 'string' || en.trim().length === 0) empty.push(key);
+    }
+    expect(missing, `keys in zh-CN missing from en: ${missing.join(', ')}`).toEqual([]);
+    expect(empty, `keys with empty English value: ${empty.join(', ')}`).toEqual([]);
+  });
+
+  it('every English key exists in zh-CN (no orphans)', async () => {
+    const { MESSAGES_ZH_CN } = await import('@/src/i18n/messages/zh-CN');
+    const { MESSAGES_EN } = await import('@/src/i18n/messages/en');
+    const zhKeys = new Set(Object.keys(MESSAGES_ZH_CN));
+    const enOrphans = Object.keys(MESSAGES_EN).filter((k) => !zhKeys.has(k));
+    expect(enOrphans, `keys in en missing from zh-CN: ${enOrphans.join(', ')}`).toEqual([]);
+  });
+
+  it('placeholders in zh-CN match placeholders in en (no drift)', async () => {
+    const { MESSAGES_ZH_CN } = await import('@/src/i18n/messages/zh-CN');
+    const { MESSAGES_EN } = await import('@/src/i18n/messages/en');
+    const placeholderSet = (s: string) => new Set(Array.from(s.matchAll(/\{(\w+)\}/g)).map((m) => m[1]));
+    const drifted: string[] = [];
+    for (const [key, zh] of Object.entries(MESSAGES_ZH_CN)) {
+      const en = MESSAGES_EN[key];
+      if (typeof en !== 'string') continue;
+      const a = placeholderSet(zh);
+      const b = placeholderSet(en);
+      if (a.size !== b.size || ![...a].every((p) => b.has(p))) {
+        drifted.push(`${key}: zh={${[...a].sort()}} en={${[...b].sort()}}`);
+      }
+    }
+    expect(drifted, `placeholder drift: ${drifted.join('; ')}`).toEqual([]);
   });
 });
