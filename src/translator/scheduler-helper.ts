@@ -118,3 +118,25 @@ export async function yieldToMain(): Promise<void> {
   }
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
+
+/**
+ * Build a leading-edge throttle. The first call to the returned
+ * function invokes `fn` immediately; subsequent calls within
+ * `delayMs` are suppressed. This is the right shape for
+ * "do not run the same heavy cleanup twice in 50 ms" use cases
+ * like SPA reset (visibilitychange + popstate + hashchange +
+ * viewtransitionstart can all fire inside a single tick on
+ * view-transitions pages).
+ */
+export function createLeadingThrottle(
+  delayMs: number,
+  fn: () => void,
+): () => void {
+  let lastCallTime = 0;
+  return () => {
+    const now = Date.now();
+    if (now - lastCallTime < delayMs) return;
+    lastCallTime = now;
+    fn();
+  };
+}

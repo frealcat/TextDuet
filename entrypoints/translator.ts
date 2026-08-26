@@ -41,6 +41,7 @@ import { collectStyleContext } from '@/src/translator/style-context';
 import { captureSelectionAnchor, getCapturedSelection, renderSelectionError, renderSelectionTranslation } from '@/src/translator/selection-translation';
 import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
 import { TranslationMemory } from '@/src/translator/translation-memory';
+import { createLeadingThrottle } from '@/src/translator/scheduler-helper';
 import type { TranslatedBlock } from '@/src/core/contracts';
 
 const INSTALL_MARKER = '__textDuetInstalled';
@@ -922,18 +923,25 @@ function installSpaNavigationReset(run: TranslationRun): void {
     // the new view before we read the DOM.
     scheduleScan(run, 0);
   };
+  // Throttle the reset trigger so a flurry of events (view transition
+  // + hashchange + visibilitychange + popstate in the same tick) does
+  // not queue five consecutive cleanups. `removeRenderedTranslations`
+  // is idempotent but a no-op 50 ms later means we re-render once,
+  // not five times. 50 ms is short enough that a real user still
+  // sees the new view translated in the same paint frame.
+  const throttledOnNavigate = createLeadingThrottle(50, onNavigate);
   const originalPushState = history.pushState.bind(history);
   const originalReplaceState = history.replaceState.bind(history);
   history.pushState = (...args: Parameters<typeof history.pushState>): void => {
     originalPushState(...args);
-    onNavigate();
+    throttledOnNavigate();
   };
   history.replaceState = (...args: Parameters<typeof history.replaceState>): void => {
     originalReplaceState(...args);
-    onNavigate();
+    throttledOnNavigate();
   };
-  const onPopState = (): void => onNavigate();
-  const onHashChange = (): void => onNavigate();
+  const onPopState = (): void => throttledOnNavigate();
+  const onHashChange = (): void => throttledOnNavigate();
   // Tab visibility. SPA frameworks often re-evaluate animations or
   // background workers when the user returns to a tab, which can
   // produce child mutations that the MutationObserver happily turns
@@ -942,7 +950,7 @@ function installSpaNavigationReset(run: TranslationRun): void {
   // page consistent with the rest of the lifecycle.
   const onVisibilityChange = (): void => {
     if (typeof document === 'undefined') return;
-    if (document.visibilityState === 'visible') onNavigate();
+    if (document.visibilityState === 'visible') throttledOnNavigate();
   };
   window.addEventListener('popstate', onPopState);
   window.addEventListener('hashchange', onHashChange);
@@ -953,7 +961,11 @@ function installSpaNavigationReset(run: TranslationRun): void {
   // begins swapping the DOM; the call site (SPA framework) usually
   // pauses paint until the new view mounts, so resetting translations
   // at start gives us a clean slate before any new translation lands.
-  const onViewTransitionStart = (): void => onNavigate();
+  // Older browsers (no `document.startViewTransition` support) never
+  // fire this event; `addEventListener` on an unknown event name is
+  // a safe no-op per the DOM spec, so the registration itself is
+  // portable.
+  const onViewTransitionStart = (): void => throttledOnNavigate();
   document.addEventListener('viewtransitionstart', onViewTransitionStart);
 
   // Astro's island router emits `astro:before-swap` immediately
