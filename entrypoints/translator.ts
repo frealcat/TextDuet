@@ -934,8 +934,19 @@ function installSpaNavigationReset(run: TranslationRun): void {
   };
   const onPopState = (): void => onNavigate();
   const onHashChange = (): void => onNavigate();
+  // Tab visibility. SPA frameworks often re-evaluate animations or
+  // background workers when the user returns to a tab, which can
+  // produce child mutations that the MutationObserver happily turns
+  // into duplicate translations if the dedup cache is still warm.
+  // Forcing a full cleanup + re-scan on `visible` keeps the rendered
+  // page consistent with the rest of the lifecycle.
+  const onVisibilityChange = (): void => {
+    if (typeof document === 'undefined') return;
+    if (document.visibilityState === 'visible') onNavigate();
+  };
   window.addEventListener('popstate', onPopState);
   window.addEventListener('hashchange', onHashChange);
+  document.addEventListener('visibilitychange', onVisibilityChange);
 
   // View Transitions API (Chrome 111+, optional). The browser fires
   // `viewtransitionstart` when a programmatic `document.startViewTransition`
@@ -958,6 +969,7 @@ function installSpaNavigationReset(run: TranslationRun): void {
     window.removeEventListener('hashchange', onHashChange);
     document.removeEventListener('viewtransitionstart', onViewTransitionStart);
     document.removeEventListener('astro:before-swap', onAstroBeforeSwap);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
   };
 }
 

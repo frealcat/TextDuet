@@ -8,16 +8,15 @@ import { getRuleRootElements, type SiteRule } from './site-rules';
 export const TRANSLATION_BLOCK_SELECTOR =
   [
     // Top-level text containers. The list starts with semantic elements
-    // (h1-h6, p, li, blockquote, td, figcaption, a) which most sites emit.
-    // `<a>` is added because SPA post titles are typically clickable
-    // links rather than heading elements. The list then expands to the
-    // generic containers that Tailwind / Bootstrap / utility-first SPAs
-    // emit (article, [role=article]/[role=listitem], span, div, section)
-    // because real-world post cards often carry all their text in
-    // <div>s with no semantic heading. The post-pruning pass keeps the
-    // deepest candidate per branch, so a <div> containing an <h3>
-    // collapses to the <h3>; only the leaf-most text gets its own block.
-    'h1, h2, h3, h4, h5, h6, p, li, blockquote, td, figcaption, a',
+    // (h1-h6, p, li, blockquote, td, figcaption) which most sites emit.
+    // `<a>` is intentionally NOT in the top-level: in body content the
+    // anchor text is almost always part of a longer sentence ("see
+    // our <a>terms</a>"), and translating the link as its own one-word
+    // block would split the parent paragraph into per-word fragments.
+    // Navigation links in header / nav / footer / aside are still
+    // collected via the shell-specific selectors below, where the link
+    // is the entire block label and a one-word translation is correct.
+    'h1, h2, h3, h4, h5, h6, p, li, blockquote, td, figcaption',
     'article, [role="article"], [role="listitem"]',
     'span, div, section',
     // Tab strip: ARIA tabs are typically <button role="tab"> or
