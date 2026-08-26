@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { KeyRound, LoaderCircle, PlugZap, Save } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { KeyIcon, PlugIcon, SaveIcon, SpinnerIcon } from '@/src/icons';
 import type { ProviderSettings, RuntimeMessage } from '@/src/core/contracts';
 import {
   DEFAULT_PROVIDER_SETTINGS,
@@ -25,7 +25,15 @@ import { CompatibilityDiagnosticsCard } from './CompatibilityDiagnosticsCard';
 import { TranslationAppearanceControls } from './TranslationAppearanceControls';
 import { ModelTagInput } from './ModelTagInput';
 import { CustomLocaleCard } from './CustomLocaleCard';
-import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
+import { OptionsLayout } from './Layout';
+import type { SidebarSection } from './Sidebar';
+// LanguagePairPicker bundles ECharts (~270 kB). Keep it out of the
+// main Options chunk so the first paint does not download the chart
+// runtime until the user opens the language pair section.
+const LanguagePairPicker = lazy(async () => {
+  const module = await import('@/src/ui/LanguagePairPicker');
+  return { default: module.LanguagePairPicker };
+});
 import { applyLocale, type LanguagePreference, resolveActiveLocale, useTranslation } from '@/src/i18n';
 
 export function App() {
@@ -145,17 +153,94 @@ export function App() {
     }
   }
 
-  return (
-    <main className="settings-shell">
-      <header>
-        <div className="eyebrow">{t('options.brand.eyebrow')}</div>
-        <h1>{t('options.brand.title')}</h1>
-        <p>
-          网页文本会从浏览器直接发送给你选择的模型服务商，不经过本项目的服务器。
-        </p>
-      </header>
+  // Sidebar 4 段配置(语言 / 模型 / 用量 / 高级),子项保留原 step 编号
+  // 便于 i18n 与 anchor 滚动。TD-2026-025 P2 引入,P4 改用 v2 token。
+  const sidebarSections: SidebarSection[] = useMemo(
+    () => [
+      {
+        id: 'section-language',
+        label: '语言',
+        children: [
+          { step: '00', label: t('language.section.title') },
+          { step: '06', label: t('language.custom.title') },
+        ],
+      },
+      {
+        id: 'section-model',
+        label: '模型',
+        children: [
+          { step: '01', label: t('options.section.provider.title') },
+          { step: '02', label: t('options.section.preferences.title') },
+          { step: '03', label: t('options.section.prompt.title') },
+        ],
+      },
+      {
+        id: 'section-usage',
+        label: '用量',
+        children: [
+          { step: '04', label: t('usage.dashboard.title') },
+          { step: '05', label: t('cost.title') },
+          { step: '07', label: t('cache.title') },
+        ],
+      },
+      {
+        id: 'section-advanced',
+        label: '高级',
+        children: [{ step: '08', label: t('diagnostics.title') }],
+      },
+    ],
+    [t],
+  );
 
-      <section className="settings-card" aria-labelledby="language-heading">
+  return (
+    <OptionsLayout
+      sections={sidebarSections}
+      brand={
+        <header>
+          <div className="eyebrow">{t('options.brand.eyebrow')}</div>
+          <h1>{t('options.brand.title')}</h1>
+          <p>
+            网页文本会从浏览器直接发送给你选择的模型服务商，不经过本项目的服务器。
+          </p>
+        </header>
+      }
+      actionBar={
+        <div className="action-bar">
+          <p
+            className={`td-badge ${
+              /失败|错误|不能|不可|拒绝/.test(status)
+                ? 'td-badge--danger'
+                : /警告|注意|未配置/.test(status)
+                  ? 'td-badge--warning'
+                  : /成功|已|完成/.test(status)
+                    ? 'td-badge--success'
+                    : 'td-badge--info'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {status}
+          </p>
+          <button className="secondary-button" type="button" onClick={() => save(true)} disabled={busy}>
+            <PlugIcon size={16} />
+            测试连接
+          </button>
+          <button className="primary-button" type="button" onClick={() => save(false)} disabled={busy}>
+            {busy ? (
+              <SpinnerIcon className="spin" size={16} />
+            ) : (
+              <SaveIcon size={16} />
+            )}
+            {busy ? '处理中…' : '保存配置'}
+          </button>
+        </div>
+      }
+    >
+      <section
+        id="section-language-00"
+        className="settings-card"
+        aria-labelledby="language-heading"
+      >
         <div className="section-heading">
           <div>
             <span className="step">00</span>
@@ -170,14 +255,18 @@ export function App() {
         />
       </section>
 
-      <section className="settings-card" aria-labelledby="provider-heading">
+      <section
+        id="section-model-01"
+        className="settings-card"
+        aria-labelledby="provider-heading"
+      >
         <div className="section-heading">
           <div>
             <span className="step">01</span>
             <h2 id="provider-heading">{t('options.section.provider.title')}</h2>
           </div>
           <span className={hasSavedApiKey ? 'badge success' : 'badge'}>
-            <KeyRound aria-hidden="true" size={12} strokeWidth={2} />
+            <KeyIcon size={12} />
             {hasSavedApiKey ? '已保存密钥' : '尚未配置'}
           </span>
         </div>
@@ -236,7 +325,11 @@ export function App() {
         </div>
       </section>
 
-      <section className="settings-card" aria-labelledby="privacy-heading">
+      <section
+        id="section-model-02"
+        className="settings-card"
+        aria-labelledby="privacy-heading"
+      >
         <div className="section-heading">
           <div>
             <span className="step">02</span>
@@ -253,11 +346,13 @@ export function App() {
           />
         </fieldset>
 
-        <LanguagePairPicker
-          sourceLanguage={settings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE}
-          targetLanguage={settings.targetLanguage}
-          onChange={(source, target) => setSettings((current) => ({ ...current, sourceLanguage: source, targetLanguage: target }))}
-        />
+        <Suspense fallback={null}>
+          <LanguagePairPicker
+            sourceLanguage={settings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE}
+            targetLanguage={settings.targetLanguage}
+            onChange={(source, target) => setSettings((current) => ({ ...current, sourceLanguage: source, targetLanguage: target }))}
+          />
+        </Suspense>
 
         <TranslationAppearanceControls
           displayMode={settings.displayMode}
@@ -291,7 +386,11 @@ export function App() {
         </label>
       </section>
 
-      <section className="settings-card" aria-labelledby="prompt-heading">
+      <section
+        id="section-model-03"
+        className="settings-card"
+        aria-labelledby="prompt-heading"
+      >
         <div className="section-heading">
           <div>
             <span className="step">03</span>
@@ -310,48 +409,20 @@ export function App() {
       </section>
 
       <UsageDashboardCard
+        id="section-usage-04"
         baseUrl={settings.baseUrl}
         model={settings.model}
         refreshKey={configurationRevision}
       />
-      <CostSettingsCard model={settings.model} />
-      <CacheSettingsCard />
-      <CompatibilityDiagnosticsCard />
+      <CostSettingsCard id="section-usage-05" model={settings.model} />
+      <CacheSettingsCard id="section-usage-07" />
+      <CompatibilityDiagnosticsCard id="section-advanced-08" />
       <CustomLocaleCard
+        id="section-language-06"
         currentLanguagePreference={(settings.language as string | undefined) || 'auto'}
         onLocaleChange={(tag) => update('language', tag)}
       />
-
-      <div className="action-bar">
-        <p
-          className={`td-badge ${
-            /失败|错误|不能|不可|拒绝/.test(status)
-              ? 'td-badge--danger'
-              : /警告|注意|未配置/.test(status)
-                ? 'td-badge--warning'
-                : /成功|已|完成/.test(status)
-                  ? 'td-badge--success'
-                  : 'td-badge--info'
-          }`}
-          role="status"
-          aria-live="polite"
-        >
-          {status}
-        </p>
-        <button className="secondary-button" type="button" onClick={() => save(true)} disabled={busy}>
-          <PlugZap aria-hidden="true" size={15} strokeWidth={2} />
-          测试连接
-        </button>
-        <button className="primary-button" type="button" onClick={() => save(false)} disabled={busy}>
-          {busy ? (
-            <LoaderCircle className="spin" aria-hidden="true" size={15} strokeWidth={2} />
-          ) : (
-            <Save aria-hidden="true" size={15} strokeWidth={2} />
-          )}
-          {busy ? '处理中…' : '保存配置'}
-        </button>
-      </div>
-    </main>
+    </OptionsLayout>
   );
 }
 
