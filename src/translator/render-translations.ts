@@ -70,7 +70,7 @@ export function renderTranslations(
     if (!sourceBlock) continue;
     const sourceElement = sourceBlock.element;
 
-    // PRE-RENDER DEDUP: SPA frameworks (Next.js App Router, React 18
+    // Per-element dedup: SPA frameworks (Next.js App Router, React 18
     // hydration) often re-wrap the same logical block in new nodes
     // between renders. Strict `:scope > .td-translation` selectors miss
     // the previous translation once it has been moved under a wrapper.
