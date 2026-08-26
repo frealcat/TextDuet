@@ -4,21 +4,18 @@ import type { ComposeOption } from 'echarts/core';
 import { LineChart, type LineSeriesOption } from 'echarts/charts';
 import {
   GridComponent,
-  LegendComponent,
   TooltipComponent,
   type GridComponentOption,
-  type LegendComponentOption,
   type TooltipComponentOption,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { UsageHistoryDashboard, UsageModelSeries } from '@/src/core/contracts';
 import { formatTokenAxisValue, getTokenAxisScale } from '@/src/core/usage-history';
-import { t } from '@/src/i18n';
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
+echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 type UsageChartOption = ComposeOption<
-  LineSeriesOption | GridComponentOption | LegendComponentOption | TooltipComponentOption
+  LineSeriesOption | GridComponentOption | TooltipComponentOption
 >;
 
 interface UsageHistoryChartProps {
@@ -40,13 +37,6 @@ export function UsageHistoryChart({ dashboard, series }: UsageHistoryChartProps)
       animation: false,
       color: ['#9c5e2e', '#7c6035'],
       grid: { top: 34, right: 16, bottom: 28, left: 48 },
-      legend: {
-        top: 0,
-        right: 0,
-        itemWidth: 10,
-        itemHeight: 10,
-        textStyle: { color: '#6b6356', fontSize: 11 },
-      },
       tooltip: {
         trigger: 'axis',
       },
@@ -103,6 +93,10 @@ export function UsageHistoryChart({ dashboard, series }: UsageHistoryChartProps)
 
   return (
     <div className="usage-chart-wrap">
+      <div className="usage-chart-legend" aria-hidden="true">
+        <span><i className="usage-chart-legend-line input" />输入</span>
+        <span><i className="usage-chart-legend-line output" />输出</span>
+      </div>
       <div
         ref={chartRef}
         className="usage-chart"

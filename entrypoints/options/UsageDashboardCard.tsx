@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Activity, ExternalLink, RefreshCw, Trash2, WalletCards } from 'lucide-react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { ChartLineIcon, ExternalLinkIcon, RefreshIcon, TrashIcon, CacheIcon } from '@/src/icons';
 import type {
   OfficialModelPricing,
   ProviderBalance,
@@ -14,16 +14,28 @@ import {
   parseProviderBalance,
   parseUsageHistoryDashboard,
 } from '@/src/core/schemas';
-import { UsageHistoryChart } from './UsageHistoryChart';
 import { t } from '@/src/i18n';
+
+// Charting is only needed after a local usage history with actual data has
+// loaded. Keep it out of the Options startup chunk so opening settings to
+// change a provider or API key never has to parse charting code first.
+// TD-2026 WS2: the chart is now a hand-rolled SVG component (no ECharts),
+// so the lazy chunk is just a few KB of TypeScript instead of ~495 kB of
+// charting runtime.
+const UsageHistoryChart = lazy(async () => {
+  const module = await import('./UsageHistoryChartSvg');
+  return { default: module.UsageHistoryChartSvg };
+});
 
 interface UsageDashboardCardProps {
   baseUrl: string;
   model: string;
   refreshKey: number;
+  /** Optional DOM id, used by sidebar scroll anchors (TD-2026-025 P2). */
+  id?: string;
 }
 
-export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboardCardProps) {
+export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDashboardCardProps) {
   const [history, setHistory] = useState<UsageHistoryDashboard | null>(null);
   const [officialPricing, setOfficialPricing] = useState<OfficialModelPricing>({
     status: 'unavailable',
@@ -129,14 +141,14 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
   ) || history?.models[0];
 
   return (
-    <section className="settings-card" aria-labelledby="usage-heading">
+    <section id={id} className="settings-card" aria-labelledby="usage-heading">
       <div className="section-heading">
         <div>
           <span className="step">04</span>
           <h2 id="usage-heading">{t('usage.section.title')}</h2>
         </div>
         <span className="badge">
-          <Activity aria-hidden="true" size={12} strokeWidth={2} />
+          <ChartLineIcon size={12} />
           最近 60 天
         </span>
       </div>
@@ -179,7 +191,11 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
               })}
             </div>
           </div>
-          {selectedSeries && <UsageHistoryChart dashboard={history} series={selectedSeries} />}
+          {selectedSeries && (
+            <Suspense fallback={<div className="usage-chart-state" role="status">{t('usage.loading')}</div>}>
+              <UsageHistoryChart dashboard={history} series={selectedSeries} />
+            </Suspense>
+          )}
           <div className="model-usage-list" aria-label={t('各模型最近 60 天 token 汇总')}>
             {history.models.map((series) => (
               <div key={getModelSeriesKey(series)}>
@@ -205,7 +221,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
           </div>
           <a href={officialPricing.sourceUrl} target="_blank" rel="noreferrer">
             核对来源
-            <ExternalLink aria-hidden="true" size={13} strokeWidth={2} />
+            <ExternalLinkIcon size={14} />
           </a>
         </div>
       )}
@@ -214,7 +230,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
         <div className="provider-balance">
           <div className="provider-balance-heading">
             <div>
-              <WalletCards aria-hidden="true" size={16} strokeWidth={2} />
+              <CacheIcon size={16} />
               <strong>{t('usage.balance.title')}</strong>
             </div>
             <button
@@ -223,11 +239,9 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
               onClick={refreshBalance}
               disabled={balanceBusy}
             >
-              <RefreshCw
+              <RefreshIcon
                 className={balanceBusy ? 'spin' : undefined}
-                aria-hidden="true"
                 size={14}
-                strokeWidth={2}
               />
               {balanceBusy ? '查询中…' : '查询余额'}
             </button>
@@ -253,7 +267,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
               </div>
               <a href={providerBalance.sourceUrl} target="_blank" rel="noreferrer">
                 官方余额接口
-                <ExternalLink aria-hidden="true" size={13} strokeWidth={2} />
+                <ExternalLinkIcon size={14} />
               </a>
             </>
           ) : (
@@ -265,7 +279,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey }: UsageDashboar
       <p className="card-status" role="status">{status}</p>
       <div className="card-actions">
         <button className="danger-text-button" type="button" onClick={clearLedger} disabled={busy}>
-          <Trash2 aria-hidden="true" size={14} strokeWidth={2} />
+          <TrashIcon size={14} />
           {busy ? '处理中…' : '清空本地用量'}
         </button>
       </div>
