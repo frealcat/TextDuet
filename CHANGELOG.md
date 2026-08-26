@@ -2,21 +2,26 @@
 
 TextDuet 的用户可见变化记录在此文件中。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-当前最新发布：`0.1.0`（2026-08-24，本地安装版）。`Unreleased` 段保留给 0.1.1 及后续版本的待写入条目。
+当前最新发布：**未发布**。2026-08-26 项目所有者评估后决定跳过 0.1.0,直接发布 0.2.0(整合 0.1.0 + 0.1.1 + TD-2026-022/023/024 + TD-2026-025 完整重设计)。`Unreleased` 段保留给 0.2.0 及后续版本的待写入条目。
 
 ## [Unreleased]
 
-### Added
-
-- 0.1.1 起新增 Options 开关「页面顶部菜单的弹出内容也参与翻译」（默认关闭）；开启后在页面顶部菜单（GitHub / Stack Overflow 等头像菜单、站内搜索建议）点击后会自动触发一次局部重扫，把弹出内容加入翻译。
-- 0.1.1 起不同供应商的模型名称配置独立保存：切换 Provider 预设时不再残留上一个供应商的模型列表；老用户的现存 `model` / `models` 自动迁移到当前 baseUrl origin 桶。
-
 ### Changed
 
-- 0.1.1 起默认 header / footer 候选选择器覆盖 WAI-ARIA 角色 `[role="banner"]` 与 `[role="contentinfo"]`，不写语义标签的 Gatsby / Next / 自定义 div shell 现在也能纳入 header / footer 翻译。
-- 0.1.1 起 `SiteRule` 新增可选字段 `headerExtras` / `footerExtras`，按 host 显式扩展站点特定选择器；默认保守行为不变。
+- 0.2.0 起 TextDuet 跳过 0.1.0 / 0.1.1,直接发布完整重设计版;`docs/ITERATION-LOG.md` TD-2026-021 状态切为「V1.0 暂缓,合并到 0.2.0」,TD-2026-025 接管发布。
+- 0.2.0 起 Options 页从「7 卡片垂直堆叠」重构为「Sidebar + 主区」,4 大段:语言 / 模型 / 用量 / 高级。
+- 0.2.0 起设计 token 从 v1.0(13 变量)升级到 v2(6 语义色族 × 5 档 shade + 11 档字号 + 6 档圆角 + 5 档阴影 + 11 档间距 + 7 档图标尺寸);warm-craft 家族延续(品牌 brief 明示 override)。
+- 0.2.0 起图标库从 `lucide-react` 切换为手设计 SVG 套件(`src/icons/`,40+ 图标,24×24 viewBox,1.5px stroke,currentColor 单色);零运行时依赖增量。
+- 0.2.0 起状态徽标升级为 `td-badge` v2(图标 + 文字 + 颜色三重指示,WCAG AA)。
+- 0.2.0 起 Popup 与网页状态条按 v2 token 同步重新着色。
+- 0.1.1 起的 header 弹窗开关 / 模型 per-origin 独立 / `[role="banner"]` 选择器扩展全部继承(未回退)。
+- 0.2.x 起翻译子系统按 `TD-2026-026` 7 Layer 升级:SiteProfile 嗅探 8 种 web 架构(SSR / SPA / Streaming SSR 含 RSC / SSG-ISR / PWA-SW / MPA / Islands / Hybrid);Strategy Registry + Dispatcher(委派 fallback 策略,后续按 profile 分支);DOM Extraction 2.0 用 TreeWalker 替代 `querySelectorAll`,加 IntersectionObserver 视口预翻译 200px + async SHA-256 内容哈希;Modern Observation 用 `scheduler.postTask` 替代 `setTimeout` + `AbortController` 取消在途;Translation Memory 4 级缓存 L1 WeakMap / L2 Map / L3 chrome.storage.local / L4 BroadcastChannel;Smart Insertion 3 策略 `adjacent`(默认) / `highlight`(CSS.highlights API) / `range-replace`(Range API);SPA Reset 2.0 加 View Transitions API + `astro:before-swap` 监听 + AbortController 取消在途。零新增运行时依赖;新单测 36 项,总 254 项全过。
 
-## [0.1.0] - 2026-08-24
+## [0.2.0] - 2026-08-26(已合并到 0.2.x 升级版,未发布)
+
+## [0.1.0] - 2026-08-24(已合并到 0.2.0,未发布)
+
+> ⚠️ 0.1.0 标签从未实际发布,2026-08-26 项目所有者决定跳过此版本,合并入 0.2.0 完整重设计版。下文保留为历史规格摘要,不视为「已对外发布」的功能清单。
 
 首版 `0.1.0` 本地安装版。配套 Git tag 与 GitHub Release 由项目所有者按 `AGENT_DEV.md §5` 单独授权后创建；本仓库在此之前不得声明已"对外发布"。本版不进入 Chrome Web Store、其他商店或自动更新分发。
 

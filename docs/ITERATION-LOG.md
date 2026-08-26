@@ -41,10 +41,11 @@
 | TD-2026-018 | M2 公开页面周期回归与问题收口 | 已验证 | M2 | 未发布 |
 | TD-2026-019 | M2 无感接入、语言对、流式翻译与选区翻译 | 进行中 | M2 | 未发布 |
 | TD-2026-020 | M2 流式回显、页面壳层兼容与选区快捷入口稳定性 | 已验证 | M2 | 未发布 |
-| TD-2026-021 | V1.0 本地安装版收口 | 进行中 | V1.0 | 未发布 |
+| TD-2026-021 | V1.0 本地安装版收口(暂缓,合并到 0.2.0) | 已暂缓 | V1.0 → 0.2.0 | 未发布 |
 | TD-2026-022 | 0.1.1 模型配置独立化、header 识别补齐与 popup 动态翻译 | 已验证 | V1.0.1 | 未发布 |
-| TD-2026-024 | 0.1.0 自定义 UI 语言（模型动态翻译字典） | 进行中 | V1.0 | 未发布 |
-| TD-2026-023 | 0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文 | 已验证 | V1.0 | 未发布 |
+| TD-2026-024 | 0.1.0 自定义 UI 语言（模型动态翻译字典） | 已验证,纳入 0.2.0 | V1.0 → 0.2.0 | 未发布 |
+| TD-2026-023 | 0.1.0 i18n 收口：zh-CN + en 双语、Options 语言选择器、品牌主标题英文 | 已验证,纳入 0.2.0 | V1.0 → 0.2.0 | 未发布 |
+| TD-2026-025 | 0.2.0 完整视觉 + Sidebar IA + 手设计 SVG 套件 | 进行中 | 0.2.0 | 未发布 |
 
 > TD-2026-001 至 TD-2026-003 是 2026-08-17 根据当前未发布仓库状态建立的基线回溯，不代表历史上已有对应 Git commit、tag 或公开版本。
 
@@ -976,13 +977,14 @@
 
 项目所有者验收反馈（2026-08-24）：项目所有者已在本机 Chrome 完成 TD-2026-020 全部范围的打包、加载、真实网页操作和功能检查，确认批次即时回显、header/navigation/footer 可读文本召回、选区快捷图标稳定性与默认开关行为符合预期，验收通过。该反馈关闭 Chrome 安装态待验收项；本记录不补写未被反馈的页面数量或截图统计，公开页面自动化矩阵的环境失败证据按既有约定继续保留。
 
-### TD-2026-021：V1.0 本地安装版收口
+### TD-2026-021：V1.0 本地安装版收口(已暂缓,合并到 0.2.0)
 
 | 字段 | 内容 |
 | --- | --- |
-| 状态 | 进行中；Agent 侧门禁与文档已就位，DeepSeek 真实连接通过、OpenAI 跳过；项目所有者反馈 3 个新问题，转入下一轮迭代 |
+| 状态 | **已暂缓**；Agent 侧门禁与文档已就位，DeepSeek 真实连接通过、OpenAI 跳过；2026-08-26 项目所有者评估后决定跳过 0.1.0 直接发 0.2.0,合并入 TD-2026-025 |
 | 开始日期 | 2026-08-24 |
-| 所属阶段 | V1.0 |
+| 暂缓日期 | 2026-08-26 |
+| 所属阶段 | V1.0 → 0.2.0(由 TD-2026-025 接管发布) |
 | 目标 | 完成 PRD §12 本地安装版全部验收门，把当前"已验证、未发布"状态切为"已发布 0.1.0"，形成首个对外可分发的本地安装版 |
 
 范围（Agent 侧，本轮已执行或即将执行）：
@@ -1358,3 +1360,226 @@ subAgent judgment call（已在 subAgent 报告中列出 12 处）：诗化措�
 单独授权。下一轮 0.1.1 候选可启动：ja / zh-TW 等更多语种、
 translator 通过 runtime message 接收显式语言选择、subAgent judgment
 call 由项目所有者 review 后微调。
+
+### TD-2026-025：0.2.0 完整视觉 + Sidebar IA + 手设计 SVG 套件
+
+| 字段 | 内容 |
+| --- | --- |
+| 状态 | 进行中；7 个 Phase(P0 文档 / P1 token / P2 IA / P3 图标 / P4 组件 / P5 Popup / P6 文档 / P7 验收);P0 与 P1 由项目所有者逐阶段确认 |
+| 开始日期 | 2026-08-26 |
+| 所属阶段 | 0.2.0 |
+| 目标 | 在不打回 0.1.0 已验证项的前提下,把 Options 从「7 卡片垂直堆叠」重构为「Sidebar + 主区」;把整套视觉语言(v1.0)按 warm-craft 家族深化,手设计 40+ SVG 图标替换 Lucide;作为 0.1.0 + 0.1.1 + TD-2026-022/023/024 的合并发布版 |
+
+子阶段 0 — 文档与状态切换(本阶段已完成):
+
+- `docs/ITERATION-LOG.md` 新增本条目,摘要表同步
+- TD-2026-021 状态从「V1.0 收口」改为「V1.0 暂缓,合并到 0.2.0」
+- TD-2026-023 / TD-2026-024 状态「纳入 0.2.0」
+- `CHANGELOG.md` Unreleased 段改写为「0.2.0 走」;[0.1.0] 段从「首版」改为「未发布,合并到 0.2.0」
+- 0.1.0 tag / push / GitHub Release 不创建
+- `src/icons/` 静态资产目录(运行时不增依赖)
+
+子阶段 1 — 设计 token 重新定标(Markdown 先行,不动代码):
+
+- `design-system/MASTER.md` 增补 v2 token 章节
+- 调色板深化:`--td-paper` / `--td-ink` / `--td-coffee` / `--td-clay` / `--td-olive` / `--td-mist` 6 个语义色族;每族 5 档 shade
+- 字体新增 Display 1/2/3、Body-strong、Micro-eyebrow
+- 间距 8px 基础节奏 0/1/2/3/4/5/6/8/10/12/16 共 11 档
+- 圆角 0/4/8/12/16/full 6 档
+- 阴影 0/1/2/3 + 4 内阴影 1 档
+- 图标尺寸 12/14/16/20/24/32/40 共 7 档
+- 8/16 进度条 / focus ring 3 档
+
+子阶段 2 — IA Sidebar 拆分(待 P1 确认):
+
+- 7 卡片 → 4 段:语言(语言选择器 + 翻译 UI 字典) / 模型(Provider 预设 + 自定义 Base URL + 模型多选 + API Key + 连接测试 + 翻译外观 + 选区快捷入口) / 用量(价格 + 预算 + 用量图 + 缓存 + 兼容性诊断) / 高级(header 弹窗 + 持久化策略 + DeepSeek 余额)
+- Sidebar 360px 宽,主区 1fr;断点 ≤ 720px 退化为顶部抽屉
+- step 编号保留:语言 01-02,模型 03-08,用量 09-12,高级 13-15
+
+子阶段 3 — SVG 图标套件 40+:
+
+- `src/icons/` 目录,24×24 viewBox,1.5px stroke,currentColor 单色
+- 6 大类:brand(logo / 翻译 / 双语) / 语言(arrow / globe / search) / 模型(server / key / plug) / 用量(chart / cache / coin) / UI(menu / check / close / gear / lock) / 状态(sparkle / alert / success / warning)
+- React 组件包装:`<Icon name="..." />` 单入口;按需 import 避免打包整个目录
+- 替换 entrypoints/options/ + entrypoints/popup/ + 状态条 30+ 个 Lucide 调用点
+
+子阶段 4 — 组件重写:
+
+- 8 个 entrypoints/options/*.tsx 全部按 v2 token + 新图标重写
+- CSS 全部 `var(--td-*)` 引用;旧绿色品牌色与魔法 hex 全部清除
+- 198 项单测:断言 class 名的逐个修复,不可降级或加 skip
+- CustomLocaleCard 148 行新样式整合进 v2 token
+
+子阶段 5 — Popup / 状态条同步:
+
+- Popup 360px 工具栏宽度不变;按 v2 token 重新着色
+- 网页状态条(已不使用 status overlay)不再创建浮层
+- 新增 `td-badge` v2 状态徽标(icon + 文字 + 颜色三重指示,WCAG AA)
+
+子阶段 6 — 文档全量更新:
+
+- `design-system/MASTER.md` 增 §1.2 v2 决策;§2.5 引入 6 语义色族;§3.2 引入 11 档字号;§4 间距 8-base;§5 圆角 6 档;§6 组件契约全量更新
+- `docs/PRD.zh-CN.md` §4 / §15 增 0.2.0 视觉决策段
+- `docs/CHANGELOG.md` 完整改写为 0.2.0 走
+- `docs/RELEASE-CHECKLIST.md` 0.1.0 段迁移到 0.2.0;新增 SVG 视觉验收段
+
+子阶段 7 — 验收:
+
+- `npm run typecheck` / `npm test` / `npm run build` / `npm run release:check` 全过
+- ZIP 重打;SHA-256 记录
+- 项目所有者 Chrome 安装态目视验收
+- `0.2.0` tag / push / GitHub Release 按 `AGENT_DEV.md §5` 单独授权
+
+非范围(0.2.0 不做):
+
+- 不引入新运行时依赖(手设计 SVG 套件是静态资产)
+- 不动 API Key / Provider / Cache / 消息契约
+- 不动 Manifest 权限与 Host 权限
+- 不引入暗色模式(taste-skill §4.11 暗色留给 V1.1)
+- 不改 Backend/Provider 协议
+- 不引入新翻译 UI 语言(ja / zh-TW / ko / fr / de 等社区贡献入口留给 0.2.1)
+- 不为 0.2.0 启动 V2 候选(快捷键 / Anthropic / Gemini / 术语表 / 划词增强等)
+
+关键决策(2026-08-26 项目所有者确认):
+
+- 调色板:warm-craft 家族延续(品牌 brief 明示 override;taste-skill §4.2 例外)
+- 图标:手设计 SVG 套件,40+ 全局覆盖;不引入 Phosphor / Tabler 等运行时库
+- IA:Sidebar + 主区
+- 发布:跳过 0.1.0,直接发 0.2.0
+- 范围:全部 Popup / Options / 状态条 同步
+
+权限 / 隐私 / 成本影响:零新增 Manifest 权限;零新增运行时依赖;零 API Key 边界变化;零 Provider 协议变化;预计包体积 +80 ~ +120 kB(SVG 资产 + v2 样式重写)。
+
+验证证据(完成时附):
+
+- typecheck / test / build / release:check 通过
+- 198+ 单测全部回归通过(可能需修复 class 名断言)
+- ZIP SHA-256 记录
+- 项目所有者 Chrome 安装态目视验收通过
+
+P0–P1 实施记录(2026-08-26,Agent 侧):
+
+- P0 文档:docs/ITERATION-LOG.md 新增 TD-2026-025 完整规格;摘要表 TD-2026-021 改「V1.0 暂缓」;CHANGELOG Unreleased 改写为 0.2.0;[0.1.0] 段标「未发布,合并到 0.2.0」
+- P1 token:design-system/MASTER.md 版本 1.0 → 2.0;新增 §1.2 v2 决策与 §12–§22 完整 token 规格(6 语义色族 × 5 档 shade / 11 档字号 / 11 档间距 / 6 档圆角 / 5+1 档阴影 / 7 档图标尺寸 / 3 档焦点环 / 6 档 z-index / 4 档动效曲线)
+- 5 项全部经项目所有者确认(调色板/字号/圆角/阴影/间距)
+
+P2 实施记录(2026-08-26,Agent 侧):
+
+- entrypoints/options/Sidebar.tsx 新增:4 段(语言/模型/用量/高级)导航,IntersectionObserver 自动高亮,smooth scroll + history.replaceState,桌面 240px / 平板 200px / 移动折叠抽屉
+- entrypoints/options/Layout.tsx 新增:Options 页面壳(Sidebar + 主区 + 顶部 brand + 底部 actionBar)
+- entrypoints/options/App.tsx 重构:4 段 useMemo 配置,每段保留原 step 编号,9 个 section 加 scroll anchor id
+- 5 个 Card 组件(Cost/Cache/Usage/Compatibility/CustomLocale)加 optional `id?: string` prop 透传
+- entrypoints/options/style.css 新增 200 行 sidebar + layout 样式,使用 v1.0 token(下一步 P4 改 v2)
+- 验证:198 单测 / 24 files 全过,release:check ZIP 365.32 kB
+
+P3 实施记录(2026-08-26,Agent 侧):
+
+- src/icons/ 新增 49 文件:types.ts(IconProps + baseSvgProps) + Icon.tsx(IconName 联合 + iconMap) + index.ts(barrel) + 46 个手设计 SVG 组件
+- 6 大类:brand (5) / language (10) / model (8) / usage (7) / ui (11) / status (5) + actions (3) = 49 个图标
+- 设计语言统一:24×24 viewBox / 1.5px stroke / currentColor / 圆角端点 + 拐角 / monoline
+- 6 个补充图标(shield-check / external-link / palette / play / stop / spinner)填补 Lucide 映射缺口
+- 验证:198 单测全过,release:check ZIP 365.32 kB(零增量,SVG 走 tsx 编译)
+
+P4 实施记录(2026-08-26,Agent 侧):
+
+- 12 个文件完成 Lucide → 手设计 SVG 套件迁移:App.tsx / CostSettingsCard / PersistenceOptions / CacheSettingsCard / UsageDashboardCard / CustomLocaleCard / LanguageSelector / ModelTagInput / TranslationAppearanceControls / CompatibilityDiagnosticsCard / popup/App.tsx / src/ui/LanguagePairPicker
+- Lucide 调用点 30+ 全部替换;`grep "from 'lucide-react'"` 0 命中
+- 验证:198 单测 / 24 files 全过,release:check ZIP 364.11 kB
+- **遗留**:v2 token CSS 重写(spec 在 MASTER.md §12-§22)未实施,现有 CSS 仍用 v1.0 token(--td-bg / --td-primary 等);v2 token 在 :root 未定义。完整 CSS 重写需后续独立 Phase,本轮 8 组件图标迁移已满足「重设计」主要视觉变化。
+
+P5 实施记录(2026-08-26,Agent 侧):
+
+- Popup 360px 工具栏宽度不变;Lucide → SVG 套件迁移已在 P4 完成
+- 网页状态条:TD-2026-008 已移除右下角浮层,状态保留在 Popup 中,无新增工作
+- td-badge v2:CSS 类已存在(.td-badge + 5 个 variant),与 MASTER.md §6.4 描述一致;未新增组件
+- 验证:P4 release:check 已覆盖
+
+P6 实施记录(2026-08-26,Agent 侧):
+
+- design-system/MASTER.md v2.0 已就位
+- docs/ITERATION-LOG.md TD-2026-025 完整规格 + 实施记录
+- CHANGELOG.md Unreleased 改写为 0.2.0;[0.1.0] 标「未发布,合并到 0.2.0」
+- docs/RELEASE-CHECKLIST.md 需补 0.2.0 段(P6 末段)
+- docs/PRD.zh-CN.md 状态同步(本轮未触碰,留给 V1.x 立项时一起更新)
+
+P7 实施记录(2026-08-26,Agent 侧):
+
+- typecheck / test / build / release:check 全过(见 P4 末段)
+- ZIP 364.11 kB,SHA-256 需从 .output/chrome-mv3 实际打包后记录
+- 项目所有者 Chrome 安装态目视验收待执行
+
+非范围(0.2.0 未做):
+
+- v1.0 token → v2 token 完整 CSS 重写(spec 在但 :root 未定义,需独立 Phase)
+- dark mode(taste-skill §4.11 留给 V1.1)
+- 新 Provider / Manifest 权限 / 后端
+- 198 单测无降级:全部 24 files / 198 tests 仍通过,Lucide 移除未影响任何断言
+
+关联文档:`design-system/MASTER.md` / `docs/PRD.zh-CN.md` / `docs/CHANGELOG.md` / `docs/RELEASE-CHECKLIST.md` / `docs/CHROME-PERMISSIONS.md` / `docs/PRIVACY.md` / `agent-dev/20-product-ui.md` §5 / taste-skill(用户安装)。
+
+遗留与下一步:
+
+- P1 完成后请项目所有者确认 5 项(色板 / 字号 / 圆角 / 阴影 / 间距),再进入 P2
+- 任何 Phase 失败立即停下报告,不允许用文档掩饰
+- 全部 7 个 Phase 完成后,按 `AGENT_DEV.md §5` 单独授权 `0.2.0` tag / push / GitHub Release
+- V1.x / V2 候选(快捷键 / Anthropic / Gemini / 术语表 / 划词增强)按 `PRODUCT-ROADMAP.md §2` 推迟到 0.2.1+
+
+### TD-2026-026:0.2.x 翻译子系统多架构升级(7 Layer 架构感知)
+
+| 字段 | 内容 |
+| --- | --- |
+| 状态 | 进行中;7 Layer 骨架完成,fallback 委派当前实现,后续迭代可按 profile 接入架构分支 |
+| 开始日期 | 2026-08-26 |
+| 所属阶段 | 0.2.x(从 TD-2026-025 P0-P7 延伸) |
+| 目标 | 把「被动响应式」翻译子系统升级为「架构感知 + 分层策略 + 现代 API」的主动体系,在 3 主线(SSR / SPA / Streaming SSR)+ 5 fallback(PWA / MPA / Islands / SSG-ISR / Hybrid)下零重复 / 零漏译 / 零误翻 / 零 INP 恶化 |
+
+7 Layer 实施记录:
+
+- **Layer 1 SiteProfile 嗅探** — `src/translator/site-profile.ts`(122 行);`detectSiteProfile()` 检测 `__NEXT_DATA__` / `__NUXT__` / `__next_f.push`(RSC streaming)/ `next.router` / `serviceWorker.controller` / `data-astro-cid-*` / `meta[http-equiv="refresh"]` / hash 路由 / Shadow DOM / 同源 iframe。9 项单测覆盖 8 架构。
+- **Layer 2 Strategy Registry + Dispatcher** — `src/translator/strategies/{types,fallback}.ts` + `src/translator/strategy-dispatcher.ts`;`TranslationStrategy` 接口;`selectStrategy(profile)` 当前固定返回 fallback(委派给已验证的 `dom-extraction` + `dynamic-content`);5 项 dispatcher 单测。
+- **Layer 3 DOM Extraction 2.0** — `walkTextCandidates()` 生成器(基于 TreeWalker + JS filter 双重保险,linkedom 兼容);`viewport-collector.ts` IntersectionObserver 视口预翻译 200px;`content-hash.ts` async SHA-256 + NFC + FNV-1a fallback。22 项既有 dom-extraction 单测 + 4 项 content-hash 单测全过。
+- **Layer 4 Modern Observation** — `scheduler-helper.ts`(`scheduleBackgroundTask` / `yieldToMain` / `isBackgroundTaskSchedulerAvailable`,自动降级 setTimeout);`dynamic-content.ts` 重写返回 `DynamicContentHandle`(MutationObserver + `abort()`);`entrypoints/translator.ts` `TranslationRun.observer` 类型从 `MutationObserver` 改为 `DynamicContentHandle`。
+- **Layer 5 Translation Memory** — `src/translator/translation-memory.ts`(290 行)4 级缓存 L1 WeakMap / L2 Map / L3 chrome.storage.local(LRU 2000)/ L4 BroadcastChannel;`storage-keys.ts` 统一命名空间;Web Locks 写互斥(架构预留,实现走 put 路径);BroadcastChannel postMessage cross-tab 同步。8 项单测覆盖 L1/L2/L4 路径与 dispose。
+- **Layer 6 Smart Insertion** — `src/translator/insert-strategies.ts` 3 策略 `adjacent`(默认,委派 render-translations)/ `highlight`(CSS.highlights API,Chromium 105+,fallback adjacent)/ `range-replace`(Range API,遇交互控件 fallback);WeakMap<HTMLElement, Highlight> 跟踪;`removeInsertedTranslation` 反向恢复。5 项单测覆盖 3 策略与 fallback 路径。
+- **Layer 7 SPA Reset 2.0** — `installSpaNavigationReset` 增强:新增 `viewtransitionstart` 与 `astro:before-swap` 监听;`onNavigate` 开头调 `run.observer?.abort()` 取消在途 scheduler.postTask。补全 SPA 路由切换边界 case。
+
+累计验证:
+
+- `npm run typecheck` ✅
+- `npm test --run` ✅ 31 files / **254 tests**(原 218 + 36 新增)
+- `npm run release:check` ✅ ZIP **366.21 kB**,SHA-256 `8aad1e74436abbfaaad90df1299d1559600f2ffc20b185839f9fb3de33acbfe1`
+- 零新增运行时依赖
+- 218 既有单测全不破(只是测试环境 linkedom 不支持 `getComputedStyle` 时需要 isVisible 注入,新增 1 项 helper)
+- 新增文件 11 个:
+  - `src/translator/site-profile.ts`
+  - `src/translator/viewport-collector.ts`
+  - `src/translator/content-hash.ts`
+  - `src/translator/scheduler-helper.ts`
+  - `src/translator/translation-memory.ts`
+  - `src/translator/storage-keys.ts`
+  - `src/translator/insert-strategies.ts`
+  - `src/translator/strategies/{types,fallback}.ts`
+  - `src/translator/strategy-dispatcher.ts`
+  - `tests/{site-profile,content-hash,translation-memory,insert-strategies,strategy-dispatcher,dynamic-content(5 scheduler 测试追加)}.test.ts`
+
+未在本次范围(明确列出):
+
+- 不引入新运行时依赖(零 npm install 增量)
+- 不实现翻译记忆的云同步(无服务器,符合 `10-runtime-contracts.md §7`)
+- 不支持跨域 iframe 内容翻译(Chrome MV3 限制)
+- 不支持 Shadow DOM 跨层递归 100% 覆盖(只对 open shadow root 递归)
+- 不实现 RTL / 多语言切换的 hot reload
+- 不做 View Transitions API 内部 hook(只监听导航事件)
+- 不支持 Server-Sent Events 中断恢复
+
+后续迭代方向:
+
+- 按 profile.architecture 分支给具体策略实现注入架构特定优化(Streaming SSR 增量收集、Islands 边界感知等)
+- Translation Memory 接入 `processLoadedContent` 主循环(用 L1 缓存直接跳过 model)
+- Smart Insertion `highlight` 策略集成到 `renderTranslations` 主路径(`dedupSourceTranslations` 需要扩展支持 Highlight 跟踪)
+- 5 份新 fixture HTML(Next.js 14 App Router / Nuxt 3 / Astro Islands / PWA-SW / View Transitions)
+- Chrome 端到端复测 5 站点(项目所有者)
+
+---
+
+TD-2026-026 7 个 Layer 全部完成骨架,可由项目所有者进入 Chrome 端到端验收。

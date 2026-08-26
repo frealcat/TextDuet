@@ -67,7 +67,7 @@ interface TranslationRun {
   selectionQuickAction: boolean;
   headerPopupRescan: boolean;
   forceRefresh: boolean;
-  observer: MutationObserver | null;
+  observer: import('@/src/translator/dynamic-content').DynamicContentHandle | null;
   scanTimer: number | undefined;
   isProcessing: boolean;
   hasPendingScan: boolean;
@@ -217,6 +217,7 @@ function startTranslationRun(
   run.observer = observeDynamicContent(sourceTextByElement, () => {
     if (isActiveRun(run.id)) scheduleScan(run, DYNAMIC_CONTENT_SCAN_DELAY_MS);
   });
+  installSpaNavigationReset(run);
   scheduleScan(run, 0);
 }
 
@@ -232,6 +233,7 @@ function stopActiveRun(): void {
     translatedCount: activeRun.translatedIds.size,
     failedBatchCount: activeRun.failedBatchCount,
   };
+  removeSpaNavigationReset();
   activeRun.observer?.disconnect();
   if (activeRun.scanTimer !== undefined) window.clearTimeout(activeRun.scanTimer);
   activeRun = null;
@@ -718,5 +720,85 @@ function removeHeaderPopupRescan(): void {
   if (headerPopupRescanCleanup) {
     headerPopupRescanCleanup();
     headerPopupRescanCleanup = null;
+  }
+}
+
+// ---- SPA navigation reset ----
+//
+// When a hash-routed SPA (e.g. Next.js app router, Vue Router) navigates
+// between views, the shared layout (top nav, sidebar, footer) is re-rendered
+// into a new set of DOM nodes. Without intervention, the old translation
+// spans from the previous route remain in the DOM as orphans, and the new
+// layout gets fresh translations — yielding the visible "Home / API
+// Documentation / ..." stack repeated vertically that users hit when they
+// click a post and then go back.
+//
+// The fix: when a SPA route change fires, do a full cleanup of every
+// .td-translation and unwrap every .td-source, then schedule a fresh
+// scan. The next run rebuilds translations from scratch on the new view.
+// Patching history.pushState / replaceState covers programmatic
+// navigation (router.push); popstate covers back/forward.
+
+let spaNavigationCleanup: (() => void) | null = null;
+
+function installSpaNavigationReset(run: TranslationRun): void {
+  removeSpaNavigationReset();
+  if (typeof window === 'undefined') return;
+  const onNavigate = (): void => {
+    if (!isActiveRun(run.id)) return;
+    // Cancel any in-flight `scheduler.postTask` triggered by the
+    // observer (Layer 4) so the heavy work from the old view does
+    // not race the new scan.
+    run.observer?.abort();
+    // Drop every previous translation so the shared layout does not
+    // accumulate duplicates across route changes.
+    removeRenderedTranslations();
+    // Re-scan on the next microtask so the SPA has time to mount
+    // the new view before we read the DOM.
+    scheduleScan(run, 0);
+  };
+  const originalPushState = history.pushState.bind(history);
+  const originalReplaceState = history.replaceState.bind(history);
+  history.pushState = (...args: Parameters<typeof history.pushState>): void => {
+    originalPushState(...args);
+    onNavigate();
+  };
+  history.replaceState = (...args: Parameters<typeof history.replaceState>): void => {
+    originalReplaceState(...args);
+    onNavigate();
+  };
+  const onPopState = (): void => onNavigate();
+  const onHashChange = (): void => onNavigate();
+  window.addEventListener('popstate', onPopState);
+  window.addEventListener('hashchange', onHashChange);
+
+  // View Transitions API (Chrome 111+, optional). The browser fires
+  // `viewtransitionstart` when a programmatic `document.startViewTransition`
+  // begins swapping the DOM; the call site (SPA framework) usually
+  // pauses paint until the new view mounts, so resetting translations
+  // at start gives us a clean slate before any new translation lands.
+  const onViewTransitionStart = (): void => onNavigate();
+  document.addEventListener('viewtransitionstart', onViewTransitionStart);
+
+  // Astro's island router emits `astro:before-swap` immediately
+  // before it replaces the document body. Listening for it lets us
+  // wipe the old view's translations before the swap completes.
+  const onAstroBeforeSwap = (): void => onNavigate();
+  document.addEventListener('astro:before-swap', onAstroBeforeSwap);
+
+  spaNavigationCleanup = () => {
+    history.pushState = originalPushState;
+    history.replaceState = originalReplaceState;
+    window.removeEventListener('popstate', onPopState);
+    window.removeEventListener('hashchange', onHashChange);
+    document.removeEventListener('viewtransitionstart', onViewTransitionStart);
+    document.removeEventListener('astro:before-swap', onAstroBeforeSwap);
+  };
+}
+
+function removeSpaNavigationReset(): void {
+  if (spaNavigationCleanup) {
+    spaNavigationCleanup();
+    spaNavigationCleanup = null;
   }
 }
