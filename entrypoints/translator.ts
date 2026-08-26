@@ -40,6 +40,8 @@ import { resolveSiteRule } from '@/src/translator/site-rules';
 import { collectStyleContext } from '@/src/translator/style-context';
 import { captureSelectionAnchor, getCapturedSelection, renderSelectionError, renderSelectionTranslation } from '@/src/translator/selection-translation';
 import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
+import { TranslationMemory } from '@/src/translator/translation-memory';
+import type { TranslatedBlock } from '@/src/core/contracts';
 
 const INSTALL_MARKER = '__textDuetInstalled';
 type TranslatorGlobal = typeof globalThis & {
@@ -75,6 +77,22 @@ interface TranslationRun {
   failedIds: Set<string>;
   seenIds: Set<string>;
   failedBatchCount: number;
+  /**
+   * L5: translation memory for cross-run / cross-tab cache hits. Created
+   * in `startActiveRun`; null when the user opts out or in tests.
+   */
+  memory: import('@/src/translator/translation-memory').TranslationMemory | null;
+  /**
+   * L5: model identifier used as part of the content-hash key so
+   * different model answers for the same text do not collide.
+   */
+  modelHint: string;
+  /**
+   * L6: when true, `renderTranslations` uses the `CSS.highlights`
+   * strategy instead of the DOM-wrapper `adjacent` strategy. Toggled
+   * per-run by the future Options UI.
+   */
+  useHighlightStrategy: boolean;
 }
 export default defineUnlistedScript(() => {
   const translatorGlobal = globalThis as TranslatorGlobal;
@@ -210,6 +228,18 @@ function startTranslationRun(
     failedIds: new Set(),
     seenIds: new Set(),
     failedBatchCount: 0,
+    // L5: enabled when the user has not opted out via the future Options
+    // toggle. The memory is created per run so its L1 WeakMap does not
+    // outlive the run and leak node references after the SPA navigates.
+    memory: createRunMemory(),
+    // L5: modelHint is part of the cache key. We pass an empty string
+    // for now; the future Options UI will surface model selection and
+    // feed this through.
+    modelHint: '',
+    // L6: off by default. The DOM-wrapper `adjacent` strategy is
+    // visually identical to what users have been seeing and has the
+    // strongest browser support. Opt-in via Options in a later round.
+    useHighlightStrategy: false,
   };
   activeRun = run;
   installSelectionQuickAction(run);
@@ -236,6 +266,11 @@ function stopActiveRun(): void {
   removeSpaNavigationReset();
   activeRun.observer?.disconnect();
   if (activeRun.scanTimer !== undefined) window.clearTimeout(activeRun.scanTimer);
+  // L5: tear down the per-run memory so its L1 WeakMap and L2 Map
+  // are released. The L3 chrome.storage entries persist; the L4
+  // BroadcastChannel listener is detached by `dispose()`.
+  activeRun.memory?.dispose();
+  activeRun.memory = null;
   activeRun = null;
 }
 
@@ -281,11 +316,85 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
       }
 
       candidates.sort(compareCandidatePriority);
+      // L5: split candidates into memory hits (rendered directly from
+      // cache) and cache misses (sent to the model). The cache lookup
+      // is async because L3 reads from chrome.storage; we parallelise
+      // the lookups with Promise.all so the wall-clock cost is one
+      // microtask, not N.
+      let cached: Array<{ candidate: TranslationBlock & { element: HTMLElement }; block: TranslatedBlock }> = [];
+      let toTranslate = candidates;
+      if (run.memory) {
+        type Lookup = {
+          candidate: TranslationBlock & { element: HTMLElement };
+          hit: TranslatedBlock | null;
+        };
+        const lookups: Lookup[] = await Promise.all(
+          candidates.map(async (candidate): Promise<Lookup> => {
+            const hit = await run.memory!.get(
+              candidate.text,
+              run.targetLanguage,
+              run.modelHint,
+              candidate.element,
+            );
+            return { candidate, hit };
+          }),
+        );
+        cached = [];
+        toTranslate = [];
+        for (const entry of lookups) {
+          if (entry.hit) {
+            cached.push({ candidate: entry.candidate, block: entry.hit });
+          } else {
+            toTranslate.push(entry.candidate);
+          }
+        }
+      }
+      // Render cache hits immediately so the user sees the first
+      // paint before the model request starts. This also covers the
+      // case where the model call is slow or fails — cached blocks
+      // remain on the page regardless.
+      if (cached.length > 0) {
+        try {
+          renderTranslations(
+            cached.map((entry) => entry.candidate),
+            cached.map((entry) => entry.block),
+            run.targetLanguage,
+            { useHighlight: run.useHighlightStrategy },
+          );
+        } catch {
+          // Rendering should not throw, but if it does we just skip
+          // the cache hits for this round — the next scan will retry.
+        }
+        cached.forEach((entry) => {
+          run.translatedIds.add(entry.candidate.id);
+        });
+        if (cached.length > 0) {
+          updatePageStatus(
+            `命中本地缓存 ${cached.length} 段，无需调用模型`,
+            'progress',
+          );
+        }
+      }
+      if (toTranslate.length === 0) continue;
       try {
-        await translateCandidates(candidates, run);
+        const freshBlocks = await translateCandidatesAndCollect(toTranslate, run);
+        // L5: persist model answers for the next scan / next run.
+        if (run.memory) {
+          for (const [index, block] of freshBlocks.entries()) {
+            const candidate = toTranslate[index];
+            if (!candidate) continue;
+            await run.memory.put(
+              candidate.text,
+              run.targetLanguage,
+              run.modelHint,
+              block,
+              candidate.element,
+            );
+          }
+        }
       } catch (error) {
         run.failedBatchCount += 1;
-        candidates.forEach(({ id }) => run.failedIds.add(id));
+        toTranslate.forEach(({ id }) => run.failedIds.add(id));
         if (isActiveRun(run.id)) {
           updatePageStatus(error instanceof Error ? error.message : t('translator.status.translateFailed'), 'error');
         }
@@ -301,6 +410,20 @@ async function translateCandidates(
   candidates: Array<TranslationBlock & { element: HTMLElement }>,
   run: TranslationRun,
 ): Promise<void> {
+  await translateCandidatesAndCollect(candidates, run);
+}
+
+/**
+ * L5 wiring: variant of `translateCandidates` that returns the
+ * fresh model outputs in input order, so the caller can persist them
+ * into the `TranslationMemory`. The visible behaviour (status text,
+ * cost recording, cache hit count) is identical to
+ * `translateCandidates`; the only difference is the return value.
+ */
+async function translateCandidatesAndCollect(
+  candidates: Array<TranslationBlock & { element: HTMLElement }>,
+  run: TranslationRun,
+): Promise<TranslatedBlock[]> {
   const { targetLanguage } = run;
   const styledCandidates = candidates.map((candidate) => ({
     ...candidate,
@@ -325,9 +448,15 @@ async function translateCandidates(
   let cacheHitCount = 0;
   let isCacheAvailable = initialEstimate.isCacheAvailable;
 
+  // The flat list of model outputs in input order. The order matches
+  // `candidates` (the batch creator preserves block ordering) so the
+  // caller can pair them up for `memory.put`.
+  const allFreshBlocks: TranslatedBlock[] = [];
+  let blockCursor = 0;
+
   for (const [batchIndex, blocks] of batches.entries()) {
     if (!isActiveRun(run.id)) {
-      return;
+      return allFreshBlocks;
     }
 
     updatePageStatus(`正在翻译第 ${batchIndex + 1}/${batches.length} 批（共 ${candidates.length} 段）…`, 'progress');
@@ -335,11 +464,11 @@ async function translateCandidates(
     const response = await streamBatch({ sourceLanguage: run.sourceLanguage, targetLanguage, forceRefresh: run.forceRefresh, blocks }, styledCandidates, run);
 
     if (!isActiveRun(run.id)) {
-      return;
+      return allFreshBlocks;
     }
     // Reconcile the complete batch after the stream closes. This is idempotent
     // and covers providers that emit a validated envelope only at completion.
-    renderTranslations(styledCandidates, response.blocks, run.targetLanguage);
+    renderTranslations(styledCandidates, response.blocks, run.targetLanguage, { useHighlight: run.useHighlightStrategy });
 
     recordedAmount += response.cost.amount;
     latestTodayAmount = response.cost.today.totalCost;
@@ -351,6 +480,20 @@ async function translateCandidates(
     cacheHitCount += response.cache.hitCount;
     isCacheAvailable &&= response.cache.isAvailable;
     response.blocks.forEach(({ id }) => run.translatedIds.add(id));
+    // Append the batch's blocks to the flat list in input order. The
+    // stream may interleave block ids; we trust the `streamBatch`
+    // contract that the response.blocks array is in the same order
+    // as the input `blocks` for the same batch.
+    for (let i = 0; i < response.blocks.length; i += 1) {
+      const block = response.blocks[i];
+      const candidate = candidates[blockCursor + i];
+      if (block && candidate) {
+        allFreshBlocks.push(block);
+      } else if (block) {
+        allFreshBlocks.push(block);
+      }
+    }
+    blockCursor += response.blocks.length;
   }
 
   const estimate = summarizePageEstimates(await estimatesPromise, candidates.length);
@@ -373,6 +516,7 @@ async function translateCandidates(
       : `已翻译当前加载内容，共处理 ${run.translatedIds.size} 段${cacheMessage}${costMessage}${thresholdMessage}${ledgerMessage}${cacheWarning}；继续监听滚动加载的新内容`,
     hasPendingContent ? 'progress' : 'complete',
   );
+  return allFreshBlocks;
 }
 
 async function streamBatch(
@@ -490,6 +634,21 @@ function isActiveRun(runId: number): boolean {
   return activeRunId === runId && activeRun?.id === runId;
 }
 
+/**
+ * L5: construct a fresh `TranslationMemory` for a new run. The
+ * `chrome.storage.local` and `BroadcastChannel` integrations are
+ * best-effort: if either API is unavailable (private windows,
+ * non-Chromium test env) the memory falls back to the L1 / L2
+ * in-process tiers only.
+ */
+function createRunMemory(): TranslationMemory | null {
+  try {
+    return new TranslationMemory();
+  } catch {
+    return null;
+  }
+}
+
 async function translateSelection(text: string, sourceLanguage: string, targetLanguage: string, translationColor?: string): Promise<void> {
   const captured = getCapturedSelection();
   const selectedText = captured?.text || '';
@@ -526,6 +685,12 @@ function createSelectionRun(targetLanguage: string): TranslationRun {
     translationColor: DEFAULT_TRANSLATION_COLOR, selectionQuickAction: false, headerPopupRescan: false, forceRefresh: false, observer: null,
     scanTimer: undefined, isProcessing: false, hasPendingScan: false,
     translatedIds: new Set(), failedIds: new Set(), seenIds: new Set(), failedBatchCount: 0,
+    // Selection runs are short-lived and use the element directly; the
+    // per-run memory would be torn down by the same lifecycle so we
+    // skip it here.
+    memory: null,
+    modelHint: '',
+    useHighlightStrategy: false,
   };
 }
 

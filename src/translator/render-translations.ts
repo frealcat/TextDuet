@@ -4,6 +4,11 @@ import {
   SOURCE_CLASS,
   TRANSLATION_CLASS,
 } from './page-status';
+import {
+  insertTranslation,
+  removeInsertedTranslation,
+  isHighlightApiAvailable,
+} from './insert-strategies';
 
 /**
  * Element-level translation registry. Maps each source element to its
@@ -38,11 +43,26 @@ function dedupSourceTranslations(sourceElement: HTMLElement): HTMLElement | null
 }
 
 /** Inserts validated model output as text while preserving the source element. */
+export interface RenderOptions {
+  /**
+   * L6: when true, use the `CSS.highlights` API instead of the
+   * default `adjacent` DOM-wrapper strategy. The strategy is a
+   * no-op for the renderer in terms of translated text — the
+   * translated element is the source element's own range, with
+   * `data-td-highlight-text` carrying the latest text so subsequent
+   * passes can update in place. Falls back to `adjacent` when the
+   * browser does not expose `CSS.highlights`.
+   */
+  useHighlight?: boolean;
+}
+
 export function renderTranslations(
   candidates: Array<TranslationBlock & { element: HTMLElement }>,
   translations: TranslatedBlock[],
   targetLanguage: string,
+  options: RenderOptions = {},
 ): void {
+  const useHighlight = options.useHighlight === true && isHighlightApiAvailable();
   const candidatesById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
 
   for (const translation of translations) {
@@ -59,13 +79,6 @@ export function renderTranslations(
     // with exactly one.
     const existing = dedupSourceTranslations(sourceElement);
 
-    ensureSourceWrapper(sourceElement);
-    const ownerDocument = sourceElement.ownerDocument ?? globalThis.document;
-    if (!ownerDocument) continue;
-    const translatedElement = existing || ownerDocument.createElement('span');
-    translatedElement.className = TRANSLATION_CLASS;
-    translatedElement.lang = targetLanguage;
-    translatedElement.textContent = translation.translatedText;
     // Stable id so the MutationObserver can recognize re-rendered
     // nodes that still carry an existing translation. The data
     // attribute is harmless to the page and survives virtual DOM
@@ -73,6 +86,30 @@ export function renderTranslations(
     if (!sourceElement.hasAttribute('data-td-block-id')) {
       sourceElement.setAttribute('data-td-block-id', sourceBlock.id);
     }
+
+    if (useHighlight) {
+      // L6 path: no DOM wrapper, just register a Highlight and store
+      // the latest translated text in a data attribute. The
+      // `insertTranslation` helper handles the cleanup of the
+      // previous highlight via the same element-level registry used
+      // by the DOM strategy.
+      const previousHighlighted = sourceElement.getAttribute('data-td-highlight-text');
+      if (previousHighlighted !== translation.translatedText) {
+        // Only re-insert when the text actually changed; otherwise
+        // re-appending the same Highlight is a no-op that still
+        // touches the layout pipeline.
+        insertTranslation(sourceElement, translation.translatedText, targetLanguage, 'highlight');
+      }
+      continue;
+    }
+
+    ensureSourceWrapper(sourceElement);
+    const ownerDocument = sourceElement.ownerDocument ?? globalThis.document;
+    if (!ownerDocument) continue;
+    const translatedElement = existing || ownerDocument.createElement('span');
+    translatedElement.className = TRANSLATION_CLASS;
+    translatedElement.lang = targetLanguage;
+    translatedElement.textContent = translation.translatedText;
     if (sourceBlock.styleContext) {
       translatedElement.style.setProperty(
         'color',
@@ -98,6 +135,13 @@ export function removeRenderedTranslations(root: ParentNode = document): void {
     if (!parent) return;
     while (wrapper.firstChild) parent.insertBefore(wrapper.firstChild, wrapper);
     wrapper.remove();
+  });
+  // L6: any element that opted into the highlight strategy carries a
+  // `data-td-highlight-text` attribute; ask the strategy helper to
+  // drop the corresponding Highlight from `CSS.highlights` and strip
+  // the data attribute so the next scan starts from a clean slate.
+  root.querySelectorAll<HTMLElement>('[data-td-highlight-text]').forEach((element) => {
+    removeInsertedTranslation(element, 'highlight');
   });
   // The element-level registry is a WeakMap keyed by detached elements;
   // when the source elements are GC'd, their registry entries drop
