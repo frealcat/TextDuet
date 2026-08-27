@@ -211,7 +211,7 @@ async function handleMessage(
       const settings = parseConfiguredProviderSettings(
         await providerSettingsStorage.getValue(),
       );
-      const apiKey = await getApiKey(settings.apiKeyPersistence);
+      const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
       return fetchProviderBalance(settings, apiKey);
     }
 
@@ -301,7 +301,7 @@ async function handleMessage(
 
 async function getPublicProviderSettings(): Promise<PublicProviderSettings> {
   const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
-  const apiKey = await getApiKey(settings.apiKeyPersistence);
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
   return { ...settings, hasApiKey: Boolean(apiKey) };
 }
 
@@ -313,7 +313,19 @@ async function saveProviderSettings(
   await providerSettingsStorage.setValue(validatedSettings);
 
   if (apiKey?.trim()) {
-    await saveApiKey(apiKey.trim(), validatedSettings.apiKeyPersistence);
+    // The public settings view omits `apiKeyByOrigin` for runtime
+    // contract safety; pull the per-origin map off the same object
+    // via a cast so the storage layer can keep the per-provider
+    // keys isolated.
+    const validatedWithKeyMap = validatedSettings as typeof validatedSettings & {
+      apiKeyByOrigin?: Record<string, string>;
+    };
+    await saveApiKey(
+      apiKey.trim(),
+      validatedSettings.apiKeyPersistence,
+      validatedSettings.baseUrl,
+      { apiKeyByOrigin: validatedWithKeyMap.apiKeyByOrigin },
+    );
   }
 
   return { ok: true, message: '配置已保存' };
@@ -321,7 +333,7 @@ async function saveProviderSettings(
 
 async function testProvider(): Promise<OperationResult> {
   const settings = normalizeProviderLanguagePreferences(parseConfiguredProviderSettings(await providerSettingsStorage.getValue()));
-  const apiKey = await getApiKey(settings.apiKeyPersistence);
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
   await provider.testConnection(settings, apiKey);
   return { ok: true, message: '连接成功，模型已返回测试翻译' };
 }
@@ -641,7 +653,7 @@ async function translateI18nBatch(
   message: Extract<RuntimeMessage, { type: 'TRANSLATE_I18N_BATCH' }>,
 ): Promise<I18nBatchTranslationResult> {
   const settings = parseProviderSettings(await providerSettingsStorage.getValue());
-  const apiKey = await getApiKey(settings.apiKeyPersistence);
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
   if (!apiKey) {
     return { ok: false, errorMessage: '请先在 01 模型服务配置 API Key' };
   }

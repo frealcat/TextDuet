@@ -98,6 +98,18 @@ export const ProviderSettingsSchema = z.strictObject({
   displayMode: z.enum(['bilingual', 'source-only', 'translated-only']),
   translationColor: z.optional(CssColorSchema),
   customSystemPrompt: z.string().check(z.maxLength(12_000)),
+  // TD-2026-WS3: internal-only fields. PublicProviderSettingsSchema omits
+  // these so the raw key never crosses the runtime boundary. The Service
+  // Worker still stores the per-origin key map so each provider
+  // (Qwen / OpenAI / DeepSeek / OpenRouter / etc.) keeps its own key
+  // across baseUrl toggles.
+  apiKey: z.optional(z.string().check(z.trim(), z.maxLength(4_096))),
+  apiKeyByOrigin: z.optional(
+    z.record(
+      z.string().check(z.minLength(1), z.maxLength(2_048)),
+      z.string().check(z.trim(), z.maxLength(4_096)),
+    ),
+  ),
 });
 
 export const ConfiguredProviderSettingsSchema = ProviderSettingsSchema.check(
@@ -528,6 +540,17 @@ export function parseConfiguredProviderSettings(
 export function parsePublicProviderSettings(
   value: unknown,
 ): z.infer<typeof PublicProviderSettingsSchema> {
+  // Defensive leak check: the schema intentionally omits `apiKey` /
+  // `apiKeyByOrigin` from the public view, but zod-mini's strictObject
+  // silently strips unknown fields. If the Service Worker ever tries
+  // to send the raw key back (e.g. due to a regression), reject the
+  // payload outright so it never reaches the extension pages.
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if ('apiKey' in record || 'apiKeyByOrigin' in record) {
+      throw new Error('扩展返回的配置格式无效');
+    }
+  }
   const result = PublicProviderSettingsSchema.safeParse(value);
   if (!result.success) {
     throw new Error('扩展返回的配置格式无效');

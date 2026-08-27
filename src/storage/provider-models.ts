@@ -1,18 +1,20 @@
-// Per-origin model cache helpers.
+// Per-origin model + API-key cache helpers.
 //
 // `ProviderSettings.model` / `ProviderSettings.models` remain the canonical
 // "current" values for backward compatibility with all existing readers
 // (Popup, background service worker, cost dashboard, translation cache).
-// `modelByOrigin` / `modelsByOrigin` are the persistent per-origin store
-// keyed by `new URL(baseUrl).origin`.
+// `modelByOrigin` / `modelsByOrigin` / `apiKeyByOrigin` are the persistent
+// per-origin stores keyed by `new URL(baseUrl).origin`.
 //
 // Switching `baseUrl` must round-trip the previous origin's values back
 // into the maps and load the new origin's values into the active fields.
 
 const ORIGIN_MAX_LENGTH = 2_048;
+const API_KEY_MAX_LENGTH = 4_096;
 
 export type OriginModelMap = Record<string, string>;
 export type OriginModelListMap = Record<string, readonly string[]>;
+export type OriginApiKeyMap = Record<string, string>;
 
 export function normalizeBaseUrlOrigin(baseUrl: string): string | null {
   try {
@@ -74,6 +76,11 @@ export function getModelForOrigin(
  * its origin, then loads the new origin's cached values into the active
  * fields. If the new origin has no cache, the active fields reset to
  * empty so the user starts with a clean slate for that provider.
+ *
+ * Also parks / rehydrates the API key under the per-origin key map so
+ * each provider (Qwen / OpenAI / DeepSeek / OpenRouter / etc.) keeps
+ * its own key across baseUrl toggles. The legacy `apiKey` field is
+ * preserved in case downstream readers still expect it.
  */
 export function switchBaseUrlWithModelCache<
   T extends {
@@ -82,6 +89,8 @@ export function switchBaseUrlWithModelCache<
     models?: string[];
     modelByOrigin?: OriginModelMap;
     modelsByOrigin?: OriginModelListMap;
+    apiKey?: string;
+    apiKeyByOrigin?: OriginApiKeyMap;
   },
 >(previous: T, newBaseUrl: string): T {
   const oldOrigin = normalizeBaseUrlOrigin(previous.baseUrl);
@@ -89,6 +98,7 @@ export function switchBaseUrlWithModelCache<
 
   const modelByOrigin: OriginModelMap = { ...(previous.modelByOrigin ?? {}) };
   const modelsByOrigin: OriginModelListMap = { ...(previous.modelsByOrigin ?? {}) };
+  const apiKeyByOrigin: OriginApiKeyMap = { ...(previous.apiKeyByOrigin ?? {}) };
 
   if (oldOrigin) {
     const trimmedModel = previous.model.trim();
@@ -103,10 +113,17 @@ export function switchBaseUrlWithModelCache<
     } else {
       delete modelsByOrigin[oldOrigin];
     }
+    const trimmedKey = (previous.apiKey ?? '').trim();
+    if (trimmedKey) {
+      apiKeyByOrigin[oldOrigin] = trimmedKey;
+    } else {
+      delete apiKeyByOrigin[oldOrigin];
+    }
   }
 
   let newModel = '';
   let newList: string[] = [];
+  let newApiKey = '';
   if (newOrigin) {
     const cachedModel = modelByOrigin[newOrigin];
     if (typeof cachedModel === 'string' && cachedModel.trim()) {
@@ -116,6 +133,10 @@ export function switchBaseUrlWithModelCache<
     if (Array.isArray(cachedList)) {
       newList = trimModelList(cachedList);
     }
+    const cachedKey = apiKeyByOrigin[newOrigin];
+    if (typeof cachedKey === 'string') {
+      newApiKey = cachedKey.trim();
+    }
   }
 
   return {
@@ -123,41 +144,52 @@ export function switchBaseUrlWithModelCache<
     baseUrl: newBaseUrl,
     model: newModel,
     models: newList,
+    apiKey: newApiKey,
     modelByOrigin,
     modelsByOrigin,
+    apiKeyByOrigin,
   };
 }
 
 /**
- * Update the per-origin cache after the user edits the active `model` or
- * `models` in the UI. Also writes the new values back to the active
- * fields so the caller (typically `setSettings` in Options App) sees
- * the updated state in the next render — without this round-trip the
- * `ModelTagInput` would lose the freshly-added tag.
+ * Update the per-origin cache after the user edits the active `model`,
+ * `models`, or `apiKey` in the UI. Also writes the new values back to
+ * the active fields so the caller (typically `setSettings` in Options
+ * App) sees the updated state in the next render — without this
+ * round-trip the `ModelTagInput` would lose the freshly-added tag.
  */
 export function writeActiveModelToOriginCache<
   T extends {
     baseUrl: string;
     model: string;
     models?: string[];
+    apiKey?: string;
     modelByOrigin?: OriginModelMap;
     modelsByOrigin?: OriginModelListMap;
+    apiKeyByOrigin?: OriginApiKeyMap;
   },
->(input: T, next: { model?: string; models?: readonly string[] }): T {
+>(
+  input: T,
+  next: { model?: string; models?: readonly string[]; apiKey?: string },
+): T {
   const origin = normalizeBaseUrlOrigin(input.baseUrl);
 
   const modelByOrigin: OriginModelMap = { ...(input.modelByOrigin ?? {}) };
   const modelsByOrigin: OriginModelListMap = { ...(input.modelsByOrigin ?? {}) };
+  const apiKeyByOrigin: OriginApiKeyMap = { ...(input.apiKeyByOrigin ?? {}) };
 
   let activeModel = input.model;
   let activeModels = input.models;
+  let activeApiKey = input.apiKey;
 
   if (next.model !== undefined) {
-    const trimmed = next.model.trim();
-    activeModel = trimmed;
+    activeModel = next.model.trim();
   }
   if (next.models !== undefined) {
     activeModels = trimModelList(next.models);
+  }
+  if (next.apiKey !== undefined) {
+    activeApiKey = next.apiKey.trim();
   }
 
   if (!origin) {
@@ -165,8 +197,10 @@ export function writeActiveModelToOriginCache<
       ...input,
       model: activeModel,
       models: activeModels,
+      apiKey: activeApiKey,
       modelByOrigin,
       modelsByOrigin,
+      apiKeyByOrigin,
     };
   }
 
@@ -185,33 +219,48 @@ export function writeActiveModelToOriginCache<
       delete modelsByOrigin[origin];
     }
   }
+  if (next.apiKey !== undefined) {
+    if (activeApiKey) {
+      apiKeyByOrigin[origin] = activeApiKey;
+    } else {
+      delete apiKeyByOrigin[origin];
+    }
+  }
 
   return {
     ...input,
     model: activeModel,
     models: activeModels,
+    apiKey: activeApiKey,
     modelByOrigin,
     modelsByOrigin,
+    apiKeyByOrigin,
   };
 }
 
 /**
- * One-time migration: copy the existing active `model` and `models` into
- * the per-origin maps keyed by the current `baseUrl` origin. Safe to run
- * on every read; it's a no-op when the maps are already populated.
+ * One-time migration: copy the existing active `model`, `models`, and
+ * `apiKey` into the per-origin maps keyed by the current `baseUrl`
+ * origin. Safe to run on every read; it's a no-op when the maps are
+ * already populated. The legacy top-level `apiKey` field is preserved
+ * for backward compatibility (it stays populated after the call so
+ * existing readers continue to work).
  */
 export function migrateProviderModelsToOriginCache<
   T extends {
     baseUrl: string;
     model: string;
     models?: string[];
+    apiKey?: string;
     modelByOrigin?: OriginModelMap;
     modelsByOrigin?: OriginModelListMap;
+    apiKeyByOrigin?: OriginApiKeyMap;
   },
 >(input: T): T {
   const origin = normalizeBaseUrlOrigin(input.baseUrl);
   const modelByOrigin: OriginModelMap = { ...(input.modelByOrigin ?? {}) };
   const modelsByOrigin: OriginModelListMap = { ...(input.modelsByOrigin ?? {}) };
+  const apiKeyByOrigin: OriginApiKeyMap = { ...(input.apiKeyByOrigin ?? {}) };
 
   if (origin) {
     if (modelByOrigin[origin] === undefined && input.model.trim()) {
@@ -223,12 +272,19 @@ export function migrateProviderModelsToOriginCache<
         modelsByOrigin[origin] = trimmedList;
       }
     }
+    if (apiKeyByOrigin[origin] === undefined) {
+      const trimmedKey = (input.apiKey ?? '').trim();
+      if (trimmedKey) {
+        apiKeyByOrigin[origin] = trimmedKey;
+      }
+    }
   }
 
   return {
     ...input,
     modelByOrigin,
     modelsByOrigin,
+    apiKeyByOrigin,
   };
 }
 

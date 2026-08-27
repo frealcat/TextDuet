@@ -102,7 +102,7 @@ export async function translateWithCache(
     targetLanguage: request.targetLanguage,
     blocks: cache.missingBlocks,
   };
-  const apiKey = await getApiKey(settings.apiKeyPersistence);
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
   const result = await provider.translate(settings, apiKey, uncachedRequest, { signal });
   const settlement = await settleTranslation(
     settings,
@@ -153,7 +153,7 @@ export async function translateStreamWithCache(
     };
   }
   const uncachedRequest = { sourceLanguage: request.sourceLanguage, targetLanguage: request.targetLanguage, blocks: cache.missingBlocks };
-  const apiKey = await getApiKey(settings.apiKeyPersistence);
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
   const streamedBlocks: TranslatedBlock[] = [];
   let result;
   try {
