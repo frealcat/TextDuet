@@ -84,6 +84,11 @@ try {
   await page.getByRole('heading', { name: '连接你的翻译模型' }).waitFor();
   await page.getByRole('button', { name: /qwen-plus.*当前/ }).waitFor();
   await page.locator('.usage-chart canvas').waitFor();
+  const chartLegend = page.locator('.usage-chart-legend');
+  await chartLegend.waitFor();
+  assert.deepEqual(await chartLegend.locator('span').allTextContents(), ['输入', '输出']);
+  assert.equal(await chartLegend.locator('.usage-chart-legend-line.input').count(), 1);
+  assert.equal(await chartLegend.locator('.usage-chart-legend-line.output').count(), 1);
 
   const modelInput = page.getByLabel('添加模型名称或 code');
   await modelInput.fill('qwen-turbo');

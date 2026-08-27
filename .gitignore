@@ -2,11 +2,10 @@ node_modules/
 .wxt/
 .output/
 coverage/
-.playwright/browser-profile/
-.playwright/*.log
 output/playwright/
 *.log
 .DS_Store
 .env
 .env.*
 !.env.example
+.playwright/

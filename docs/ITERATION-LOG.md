@@ -1583,3 +1583,36 @@ P7 实施记录(2026-08-26,Agent 侧):
 ---
 
 TD-2026-026 7 个 Layer 全部完成骨架,可由项目所有者进入 Chrome 端到端验收。
+
+### TD-2026-027：SPA 节点去重与交互内容提取契约修复
+
+| 字段 | 内容 |
+| --- | --- |
+| 状态 | 已完成 Agent 侧实现与工程验证；Chrome 安装态复测未执行 |
+| 完成日期 | 2026-08-26 |
+| 所属阶段 | 0.2.x，TD-2026-026 稳定性修复 |
+| 目标 | 真实重复导航节点不得因文本相同而漏译；本地缓存命中必须渲染到当前节点；扩大 SPA 候选范围后不得把交互控件或隐藏文本发送到模型。 |
+
+**关联 commit**：`fix(TD-2026-026): exclude shell action controls + rebind cached block id`(`038d4d1`,2026-08-27)
+
+实施记录：
+
+- 删除 `render-translations.ts` 中“同父容器 + 相同文本只渲染一次”的跨节点跳过策略；保留元素级 `WeakMap` 幂等机制，因此同一个节点重复处理仍只保留一份译文，而不同真实节点各自渲染。
+- Translation Memory 命中时通过 `bindCachedTranslation()` 复制译文载荷并重绑当前 candidate id；缓存中的原始 Provider block 不被改写，`renderTranslations()` 可正确按当前 id 关联每个 DOM 节点。
+- `dom-extraction.ts` 将 `button`、原生表单控件、`summary`、`contenteditable` 与常见 ARIA 控件（含 role=button/tab/search）定义为硬排除；site rule 的 included selector 不能绕过该边界。
+- 对泛化 `span/div/section` 候选，预扫描交互/隐藏后代并向祖先建立 `WeakSet` 标记，避免容器 `textContent` 间接包含按钮标签或隐藏文本，同时避免逐候选 `querySelector` 的最坏 O(n²) 扫描。
+- 保留普通 shell 链接、静态侧栏文字、语义化阅读文本和不包含受限后代的 bare SPA 容器。若一个 bare 容器混合了裸文本与控件且没有可独立提取的语义子节点，则按安全优先整体跳过；语义化 sibling（如 `<p>`）仍会被提取。
+
+新增/更新回归覆盖：
+
+- 同文本的两个真实导航节点均渲染；同一缓存结果重绑到两个当前 id 后均可渲染；清理后所有原文恢复。
+- 缓存 id 重绑不改变缓存对象。
+- header/aside 按钮、ARIA tab/button/search、`summary`、可编辑区域、隐藏后代包装器及 generic wrapper 聚合路径均被拒绝；普通链接、相邻语义文本和纯阅读 bare 容器仍可提取。
+
+验证：
+
+- `npm run typecheck` 通过。
+- `npm test` 通过：37 个测试文件、299 项测试（含 `tests/dom-extraction.test.ts` 22 项新增、`tests/render-translations.test.ts` 3 项新增、`tests/translation-memory.test.ts` 1 项新增）。
+- `npm run release:check` 通过：ZIP 198.74 kB，SHA-256 `d2757f3a54acf14923b9a5bf89694f0651625b92d987ff9689ba9cf62dcf6b8e`。
+- `git diff --check` 通过。
+- Agent 侧工程验证完成；Chrome 安装态或真实 Provider 验收待项目所有者执行。已 commit 在 `038d4d1`（`fix(TD-2026-026): exclude shell action controls + rebind cached block id`），未 push、未 tag、未发布。

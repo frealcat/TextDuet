@@ -81,6 +81,8 @@ TextDuet 的用户可见变化记录在此文件中。格式参考 [Keep a Chang
 
 ### Fixed
 
+- 修复 SPA 壳层中相同文本节点的去重策略：每个真实可见 DOM 节点都会渲染自己的译文；本地翻译记忆只复用已验证的译文内容，并会绑定到当前节点，避免相同导航标签漏译或缓存命中后不显示。
+- 收紧泛化 DOM 候选的交互与隐藏内容边界：按钮、原生/ARIA 控件、`summary`、可编辑区域、搜索区域及其外层聚合容器不再进入翻译；普通导航链接和安全阅读文本仍可提取。
 - 修复独立打开 Options 或 Popup 扩展标签页时可信来源识别失败，导致配置保存请求被错误拒绝的问题。
 - 修复翻译流式进行中页面进入 bfcache / 导航时 `port.postMessage` 抛错被降级为 `Unchecked runtime.lastError` 的噪音；Service Worker 端加入 `safeStreamPostMessage` 与端口断连分类，clean 关闭静默、bfcache/navigation 写入本地 `console.warn` 诊断。
 - 优化阿里云 Qwen3 兼容请求：翻译场景关闭思考模式，将默认批次收紧为 4000 字符，并将默认单请求超时调整为 60 秒，降低长文章翻译超时。
