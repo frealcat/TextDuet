@@ -1,4 +1,4 @@
-import { Download, FileWarning, RefreshCw } from 'lucide-react';
+import { DownloadIcon, AlertIcon, RefreshIcon } from '@/src/icons';
 import { useState } from 'react';
 import type { CompatibilityDiagnostic, RuntimeMessage } from '@/src/core/contracts';
 import {
@@ -18,7 +18,12 @@ const ISSUE_TYPES = [
   ['other', '其他'],
 ] as const;
 
-export function CompatibilityDiagnosticsCard() {
+interface CompatibilityDiagnosticsCardProps {
+  /** Optional DOM id, used by sidebar scroll anchors (TD-2026-025 P2). */
+  id?: string;
+}
+
+export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCardProps = {}) {
   const [issueType, setIssueType] = useState<CompatibilityDiagnostic['issue']['type']>('other');
   const [includePath, setIncludePath] = useState(false);
   const [diagnostic, setDiagnostic] = useState<CompatibilityDiagnostic | null>(null);
@@ -81,14 +86,14 @@ export function CompatibilityDiagnosticsCard() {
   }
 
   return (
-    <section className="settings-card diagnostics-card" aria-labelledby="diagnostics-heading">
+    <section id={id} className="settings-card diagnostics-card" aria-labelledby="diagnostics-heading">
       <div className="section-heading">
         <div>
           <span className="step">07</span>
           <h2 id="diagnostics-heading">{t('diagnostics.section.title')}</h2>
         </div>
         <span className="badge">
-          <FileWarning aria-hidden="true" size={12} strokeWidth={2} />
+          <AlertIcon size={14} />
           默认仅本地
         </span>
       </div>
@@ -128,11 +133,11 @@ export function CompatibilityDiagnosticsCard() {
 
       <div className="card-actions">
         <button className="secondary-button" type="button" onClick={generateDiagnostic} disabled={busy}>
-          <RefreshCw className={busy ? 'spin' : ''} aria-hidden="true" size={14} strokeWidth={2} />
+          <RefreshIcon className={busy ? 'spin' : ''} size={14} />
           {busy ? '生成中…' : '生成本地预览'}
         </button>
         <button className="primary-button" type="button" onClick={downloadDiagnostic} disabled={!diagnostic || busy}>
-          <Download aria-hidden="true" size={14} strokeWidth={2} />
+          <DownloadIcon size={14} />
           下载诊断包
         </button>
       </div>

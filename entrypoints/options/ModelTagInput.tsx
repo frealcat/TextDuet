@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Check, X } from 'lucide-react';
+import { CheckIcon, CloseIcon } from '@/src/icons';
 import { t } from '@/src/i18n';
 
 const MAX_MODELS = 50;
@@ -76,7 +76,7 @@ export function ModelTagInput({
               aria-pressed={model === activeModel}
               onClick={() => onActiveModelChange(model)}
             >
-              {model === activeModel && <Check aria-hidden="true" size={12} strokeWidth={2.5} />}
+              {model === activeModel && <CheckIcon size={12} strokeWidth={2.5} />}
               <span>{model}</span>
               {model === activeModel && <small>{t('modelTag.tag.current')}</small>}
             </button>
@@ -88,7 +88,7 @@ export function ModelTagInput({
               title={`删除 ${model}`}
               onClick={() => removeModel(model)}
             >
-              <X aria-hidden="true" size={13} strokeWidth={2} />
+              <CloseIcon size={14} />
             </button>
           </span>
         ))}

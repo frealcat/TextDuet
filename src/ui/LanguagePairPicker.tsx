@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
+import { ArrowLeftRightIcon, CheckIcon, ChevronDownIcon } from '@/src/icons';
 import { SUPPORTED_SOURCE_LANGUAGES, SUPPORTED_TARGET_LANGUAGES, DEFAULT_TARGET_LANGUAGE, resolveSystemLanguage } from '@/src/core/defaults';
 import { t } from '@/src/i18n';
 
@@ -11,11 +11,45 @@ interface LanguagePairPickerProps {
 }
 
 export function LanguagePairPicker({ sourceLanguage, targetLanguage, onChange, compact = false }: LanguagePairPickerProps) {
+  // 防止「目标语言 = 跟随系统」时,swap 到源语言后变成无效值
+  // 跟随系统本身是 sentinel,不能作为 sourceLanguage 使用
+  function handleSwap(): void {
+    if (targetLanguage === DEFAULT_TARGET_LANGUAGE) {
+      // 跟随系统不能 swap 到源:保持当前 source,让用户手动选
+      return;
+    }
+    onChange(targetLanguage, sourceLanguage);
+  }
+
+  const canSwap = targetLanguage !== DEFAULT_TARGET_LANGUAGE;
+
   return (
-    <div className={compact ? 'language-pair language-pair-compact' : 'language-pair'} aria-label={t('语言方向')}>
-      <LanguageMenu label="当前语言" value={sourceLanguage} options={SUPPORTED_SOURCE_LANGUAGES} onChange={(value) => onChange(value, targetLanguage)} />
-      <span className="language-pair-arrow" aria-hidden="true">→</span>
-      <LanguageMenu label="翻译到" value={targetLanguage} options={[{ value: DEFAULT_TARGET_LANGUAGE, label: `跟随系统（${resolveSystemLanguage()}）` }, ...SUPPORTED_TARGET_LANGUAGES]} onChange={(value) => onChange(sourceLanguage, value)} />
+    <div className={compact ? 'language-pair language-pair-compact' : 'language-pair'} aria-label={t('languagePair.aria')}>
+      <LanguageMenu
+        label={t('languagePair.sourceLabel')}
+        value={sourceLanguage}
+        options={SUPPORTED_SOURCE_LANGUAGES}
+        onChange={(value) => onChange(value, targetLanguage)}
+      />
+      <button
+        type="button"
+        className="language-pair-swap"
+        aria-label={t('languagePair.swapTitle')}
+        title={t('languagePair.swapTitle')}
+        disabled={!canSwap}
+        onClick={handleSwap}
+      >
+        <ArrowLeftRightIcon size={16} />
+      </button>
+      <LanguageMenu
+        label={t('languagePair.targetLabel')}
+        value={targetLanguage}
+        options={[
+          { value: DEFAULT_TARGET_LANGUAGE, label: t('languagePair.followSystem', { language: resolveSystemLanguage() }) },
+          ...SUPPORTED_TARGET_LANGUAGES,
+        ]}
+        onChange={(value) => onChange(sourceLanguage, value)}
+      />
     </div>
   );
 }
@@ -36,10 +70,10 @@ function LanguageMenu({ label, value, options, onChange }: { label: string; valu
     <div className="language-menu" ref={rootRef}>
       <span className="language-menu-label">{label}</span>
       <button type="button" className="language-menu-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((currentOpen) => !currentOpen)}>
-        <span>{current?.label || value}</span><ChevronDown size={14} aria-hidden="true" />
+        <span>{current?.label || value}</span><ChevronDownIcon size={14} />
       </button>
       {open && <div className="language-menu-popover" role="listbox" aria-label={label}>
-        {options.map((option) => <button key={option.value} type="button" role="option" aria-selected={option.value === value} onClick={() => { onChange(option.value); setOpen(false); }}><span>{option.label}</span>{option.value === value && <Check size={14} aria-hidden="true" />}</button>)}
+        {options.map((option) => <button key={option.value} type="button" role="option" aria-selected={option.value === value} onClick={() => { onChange(option.value); setOpen(false); }}><span>{option.label}</span>{option.value === value && <CheckIcon size={14} />}</button>)}
       </div>}
     </div>
   );

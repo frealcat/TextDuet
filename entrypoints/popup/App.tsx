@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Languages, LoaderCircle, Play, Settings, Square } from 'lucide-react';
+import { ChartLineIcon, TranslationIcon, SpinnerIcon, PlayIcon, CogIcon, StopIcon } from '@/src/icons';
 import type {
   CostDashboard,
   PageTranslationState,
@@ -214,7 +214,7 @@ export function App() {
     <main className="popup-shell">
       <header className="brand-row">
         <div className="brand-mark" aria-hidden="true">
-          <Languages size={21} strokeWidth={2} />
+          <TranslationIcon size={24} />
         </div>
         <div>
           <h1>TextDuet</h1>
@@ -236,11 +236,11 @@ export function App() {
 
         <button className="primary-button" type="button" onClick={toggleTranslation} disabled={busy}>
           {busy ? (
-            <LoaderCircle className="spin" aria-hidden="true" size={16} strokeWidth={2} />
+            <SpinnerIcon className="spin" size={16} />
           ) : isTranslating ? (
-            <Square aria-hidden="true" size={14} strokeWidth={2} />
+            <StopIcon size={16} />
           ) : (
-            <Play aria-hidden="true" size={16} strokeWidth={2} />
+            <PlayIcon size={16} />
           )}
           {settings?.hasApiKey
             ? busy
@@ -286,7 +286,7 @@ export function App() {
       <section className="cost-card" aria-label={t('今日模型用量')}>
         <div className="cost-title">
           <span>
-            <Activity aria-hidden="true" size={14} strokeWidth={2} />
+            <ChartLineIcon size={16} />
             今日用量
           </span>
           {costDashboard?.today.hasEstimatedUsage && <small>{t('popup.cost.estimated')}</small>}
@@ -345,7 +345,7 @@ export function App() {
         <span className={settings?.hasApiKey ? 'ready-dot' : 'idle-dot'} aria-hidden="true" />
         <span>{settings?.hasApiKey ? `${settings.model || '模型待配置'}` : '尚未配置 API Key'}</span>
         <button type="button" onClick={() => browser.runtime.openOptionsPage()}>
-          <Settings aria-hidden="true" size={13} strokeWidth={2} />
+          <CogIcon size={14} />
           设置
         </button>
       </footer>

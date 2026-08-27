@@ -1,5 +1,5 @@
 import * as RadioGroup from '@radix-ui/react-radio-group';
-import { HardDrive, ShieldCheck } from 'lucide-react';
+import { DatabaseIcon, ShieldCheckIcon } from '@/src/icons';
 import type { ApiKeyPersistence } from '@/src/core/contracts';
 import { t } from '@/src/i18n';
 
@@ -28,7 +28,7 @@ export function PersistenceOptions({
     >
       <RadioGroup.Item className="radio-card" value="session" type="button">
         <span className="choice-icon" aria-hidden="true">
-          <ShieldCheck size={18} strokeWidth={2} />
+          <ShieldCheckIcon size={20} />
         </span>
         <span className="radio-copy">
           <strong>{t('persistence.session.title')}</strong>
@@ -40,7 +40,7 @@ export function PersistenceOptions({
       </RadioGroup.Item>
       <RadioGroup.Item className="radio-card" value="local" type="button">
         <span className="choice-icon" aria-hidden="true">
-          <HardDrive size={18} strokeWidth={2} />
+          <DatabaseIcon size={20} />
         </span>
         <span className="radio-copy">
           <strong>{t('persistence.local.title')}</strong>

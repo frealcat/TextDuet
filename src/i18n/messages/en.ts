@@ -279,6 +279,8 @@ export const MESSAGES_EN: MessageDict = {
   'languagePair.sourceLabel': 'Current language',
   'languagePair.targetLabel': 'Translate to',
   'languagePair.followSystem': 'Follow system ({language})',
+  'languagePair.swap': 'Swap',
+  'languagePair.swapTitle': 'Swap source and target languages',
 
   // ---- Content script (translator.ts) ----
   // Messages returned to the popup when it calls the background

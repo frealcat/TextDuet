@@ -1,5 +1,5 @@
 import * as RadioGroup from '@radix-ui/react-radio-group';
-import { Globe } from 'lucide-react';
+import { GlobeIcon } from '@/src/icons';
 import type { LanguagePreference } from '@/src/i18n';
 import { t } from '@/src/i18n';
 
@@ -46,7 +46,7 @@ export function LanguageSelector({
     >
       <RadioGroup.Item className="radio-card" value="auto" type="button">
         <span className="choice-icon" aria-hidden="true">
-          <Globe size={18} strokeWidth={2} />
+          <GlobeIcon size={20} />
         </span>
         <span className="radio-copy">
           <strong>{t('language.option.auto.label')}</strong>

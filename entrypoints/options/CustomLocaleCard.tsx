@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Download, Languages, RefreshCw, Trash2 } from 'lucide-react';
+import { CircleCheckIcon, DownloadIcon, TranslationIcon, RefreshIcon, TrashIcon } from '@/src/icons';
 import type { I18nBatchTranslationResult, RuntimeMessage } from '@/src/core/contracts';
 import { parseI18nBatchTranslationResult } from '@/src/core/schemas';
 import { useTranslation } from '@/src/i18n';
@@ -18,6 +18,8 @@ interface CustomLocaleCardProps {
   currentLanguagePreference: string;
   /** Show progress / errors tied to the current language choice. */
   onLocaleChange: (tag: string) => void;
+  /** Optional DOM id, used by sidebar scroll anchors (TD-2026-025 P2). */
+  id?: string;
 }
 
 const COMMON_LOCALE_PRESETS: { tag: string; name: string }[] = [
@@ -33,7 +35,7 @@ const COMMON_LOCALE_PRESETS: { tag: string; name: string }[] = [
   { tag: 'th-TH', name: 'ไทย' },
 ];
 
-export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: CustomLocaleCardProps) {
+export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange, id }: CustomLocaleCardProps) {
   const { t } = useTranslation();
   const [records, setRecords] = useState<UserLocaleRecord[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>('');
@@ -116,7 +118,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: 
   }
 
   return (
-    <section className="settings-card" aria-labelledby="custom-locale-heading">
+    <section id={id} className="settings-card" aria-labelledby="custom-locale-heading">
       <div className="section-heading">
         <div>
           <span className="step">06</span>
@@ -138,7 +140,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: 
           >
             <span className="custom-locale-name">{preset.name}</span>
             <span className="custom-locale-tag">{preset.tag}</span>
-            <Download aria-hidden="true" size={13} strokeWidth={2} />
+            <DownloadIcon size={14} />
           </button>
         ))}
         {orderedPresets.length === 0 && (
@@ -164,7 +166,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: 
           disabled={busy || !customTag.trim()}
           onClick={() => void handleTranslateCustom()}
         >
-          <Languages aria-hidden="true" size={14} strokeWidth={2} />
+          <TranslationIcon size={16} />
           {t('language.custom.translateButton')}
         </button>
       </fieldset>
@@ -202,7 +204,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: 
                   onClick={() => void handleRetranslate(record)}
                   title={t('language.custom.retranslate')}
                 >
-                  <RefreshCw aria-hidden="true" size={13} strokeWidth={2} />
+                  <RefreshIcon size={14} />
                 </button>
                 <button
                   type="button"
@@ -211,7 +213,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: 
                   onClick={() => void handleRemove(record.tag)}
                   title={t('language.custom.remove')}
                 >
-                  <Trash2 aria-hidden="true" size={13} strokeWidth={2} />
+                  <TrashIcon size={14} />
                 </button>
               </div>
             </li>
@@ -227,7 +229,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: 
             disabled={busy}
             onClick={() => void handleClearAll()}
           >
-            <Trash2 aria-hidden="true" size={14} strokeWidth={2} />
+            <TrashIcon size={14} />
             {t('language.custom.clearAll')}
           </button>
         </div>
@@ -235,7 +237,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange }: 
 
       {!builtInActive && !records.some((r) => r.tag === currentLanguagePreference) && (
         <p className="td-badge td-badge--warning" role="status">
-          <CheckCircle2 aria-hidden="true" size={12} strokeWidth={2} />
+          <CircleCheckIcon size={14} />
           {t('language.custom.translatePrompt')}
         </p>
       )}

@@ -1,4 +1,4 @@
-import { ChevronDown, Palette } from 'lucide-react';
+import { ChevronDownIcon, PaletteIcon } from '@/src/icons';
 import type { TranslationDisplayMode } from '@/src/core/contracts';
 import { DEFAULT_TRANSLATION_COLOR } from '@/src/core/defaults';
 import { isSupportedTranslationColor } from '@/src/core/translation-colors';
@@ -47,11 +47,11 @@ export function TranslationAppearanceControls({
             <strong>{t('appearance.translationColor.label')}</strong>
             <small>{translationColor || DEFAULT_TRANSLATION_COLOR}</small>
           </span>
-          <ChevronDown aria-hidden="true" size={15} strokeWidth={2} />
+          <ChevronDownIcon size={16} />
         </summary>
         <div className="color-picker-panel">
           <label className="native-color-field">
-            <span><Palette aria-hidden="true" size={14} strokeWidth={2} /> 取色盘</span>
+            <span><PaletteIcon size={14} /> 取色盘</span>
             <input
               type="color"
               value={toNativeColor(translationColor)}

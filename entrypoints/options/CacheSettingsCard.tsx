@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Database, Trash2 } from 'lucide-react';
+import { DatabaseIcon, TrashIcon } from '@/src/icons';
 import type { RuntimeMessage, TranslationCacheDashboard } from '@/src/core/contracts';
 import {
   parseOperationResult,
@@ -7,7 +7,12 @@ import {
 } from '@/src/core/schemas';
 import { t } from '@/src/i18n';
 
-export function CacheSettingsCard() {
+interface CacheSettingsCardProps {
+  /** Optional DOM id, used by sidebar scroll anchors (TD-2026-025 P2). */
+  id?: string;
+}
+
+export function CacheSettingsCard({ id }: CacheSettingsCardProps = {}) {
   const [dashboard, setDashboard] = useState<TranslationCacheDashboard | null>(null);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -56,14 +61,14 @@ export function CacheSettingsCard() {
     : 0;
 
   return (
-    <section className="settings-card" aria-labelledby="cache-heading">
+    <section id={id} className="settings-card" aria-labelledby="cache-heading">
       <div className="section-heading">
         <div>
           <span className="step">06</span>
           <h2 id="cache-heading">{t('cache.section.title')}</h2>
         </div>
         <span className="badge">
-          <Database aria-hidden="true" size={12} strokeWidth={2} />
+          <DatabaseIcon size={12} />
           仅保存在本机
         </span>
       </div>
@@ -100,7 +105,7 @@ export function CacheSettingsCard() {
           onClick={clearCache}
           disabled={busy || dashboard?.isAvailable === false}
         >
-          <Trash2 aria-hidden="true" size={14} strokeWidth={2} />
+          <TrashIcon size={14} />
           {busy ? '清理中…' : '清空翻译缓存'}
         </button>
       </div>

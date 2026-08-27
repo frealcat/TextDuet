@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { KeyIcon, PlugIcon, SaveIcon, SpinnerIcon } from '@/src/icons';
 import type { ProviderSettings, RuntimeMessage } from '@/src/core/contracts';
 import {
@@ -27,13 +27,11 @@ import { ModelTagInput } from './ModelTagInput';
 import { CustomLocaleCard } from './CustomLocaleCard';
 import { OptionsLayout } from './Layout';
 import type { SidebarSection } from './Sidebar';
-// LanguagePairPicker bundles ECharts (~270 kB). Keep it out of the
-// main Options chunk so the first paint does not download the chart
-// runtime until the user opens the language pair section.
-const LanguagePairPicker = lazy(async () => {
-  const module = await import('@/src/ui/LanguagePairPicker');
-  return { default: module.LanguagePairPicker };
-});
+// The picker is a tiny HTML select component (no ECharts), so a
+// static import is cheaper than the Suspense + React.lazy wrapper,
+// which would otherwise pull a duplicate ~150 kB React runtime into
+// a separate i18n chunk.
+import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
 import { applyLocale, type LanguagePreference, resolveActiveLocale, useTranslation } from '@/src/i18n';
 
 export function App() {
@@ -346,13 +344,11 @@ export function App() {
           />
         </fieldset>
 
-        <Suspense fallback={null}>
-          <LanguagePairPicker
-            sourceLanguage={settings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE}
-            targetLanguage={settings.targetLanguage}
-            onChange={(source, target) => setSettings((current) => ({ ...current, sourceLanguage: source, targetLanguage: target }))}
-          />
-        </Suspense>
+        <LanguagePairPicker
+          sourceLanguage={settings.sourceLanguage || DEFAULT_SOURCE_LANGUAGE}
+          targetLanguage={settings.targetLanguage}
+          onChange={(source, target) => setSettings((current) => ({ ...current, sourceLanguage: source, targetLanguage: target }))}
+        />
 
         <TranslationAppearanceControls
           displayMode={settings.displayMode}

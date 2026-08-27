@@ -118,7 +118,8 @@ label > span {
 
 .language-menu { position: relative; min-width: 0; }
 .language-menu-label { display: block; margin-bottom: 5px; color: var(--td-text-muted); font-size: 12px; font-weight: 650; }
-.language-menu-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 40px; padding: 0 9px 0 11px; border: 1px solid #cfdad5; border-radius: 10px; color: var(--td-text); background: #fff; font-size: 12px; text-align: left; }
+.language-menu-trigger { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; min-height: 40px; padding: 0 9px 0 11px; border: 1px solid #cfdad5; border-radius: 10px; color: var(--td-text); background: #fff; font-size: 12px; text-align: left; }
+.language-menu-trigger > span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .language-menu-popover { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0; max-height: 240px; overflow: auto; padding: 5px; border: 1px solid var(--td-border); border-radius: 10px; background: #fff; box-shadow: var(--td-shadow-3); }
 .language-menu-popover button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 34px; padding: 0 8px; color: #4f483d; background: transparent; font-size: 12px; text-align: left; }
 .language-menu-popover button:hover, .language-menu-popover button[aria-selected="true"] { color: var(--td-primary-hover); background: #f5ebe3; }
@@ -131,6 +132,45 @@ label > span {
   min-width: 0;
   padding-right: 7px;
   font-size: 12px;
+}
+
+.language-pair-swap {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  align-self: end;
+  margin-bottom: 0;
+  border: 1px solid #cfdad5;
+  border-radius: var(--td-radius-full);
+  color: var(--td-accent);
+  background: #fff;
+  cursor: pointer;
+  transition: border-color var(--td-dur-2) var(--td-ease-default),
+              color var(--td-dur-2) var(--td-ease-default),
+              background-color var(--td-dur-2) var(--td-ease-default);
+}
+.language-pair-swap:hover:not(:disabled) {
+  color: #fff;
+  background: var(--td-primary);
+  border-color: var(--td-primary);
+}
+.language-pair-swap:focus-visible {
+  outline: 3px solid var(--td-focus-ring);
+  outline-offset: 2px;
+}
+.language-pair-swap:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.language-pair-swap:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.language-pair-compact .language-pair-swap {
+  width: 28px;
+  height: 28px;
 }
 
 .quick-action-toggle {
@@ -360,10 +400,8 @@ footer button {
    See design-system/MASTER.md
    ============================================================ */
 
-/* Google Fonts: Noto Serif for editorial accents (h1, eyebrow, step). */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,500;0,600;0,700&family=Inter:wght@400;500;600;700&display=swap');
-
-/* Use system UI for compact popup; Noto Serif only for the title. */
+/* Use installed/fallback UI and serif fonts; extension pages must not fetch
+   remote font stylesheets at runtime. */
 body { font-family: var(--td-font-ui); }
 .brand-row h1 { font-family: var(--td-font-serif); letter-spacing: -0.005em; }
 

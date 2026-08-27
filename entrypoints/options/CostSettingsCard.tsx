@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleDollarSign, Save } from 'lucide-react';
+import { CoinIcon, SaveIcon } from '@/src/icons';
 import type { CostDashboard, CostSettings, RuntimeMessage } from '@/src/core/contracts';
 import { getLocalDateKey } from '@/src/core/cost';
 import { DEFAULT_COST_SETTINGS } from '@/src/core/defaults';
@@ -8,9 +8,11 @@ import { t } from '@/src/i18n';
 
 interface CostSettingsCardProps {
   model: string;
+  /** Optional DOM id, used by sidebar scroll anchors (TD-2026-025 P2). */
+  id?: string;
 }
 
-export function CostSettingsCard({ model }: CostSettingsCardProps) {
+export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
   const [settings, setSettings] = useState<CostSettings>(DEFAULT_COST_SETTINGS);
   const [dashboard, setDashboard] = useState<CostDashboard | null>(null);
   const [status, setStatus] = useState('');
@@ -94,14 +96,14 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
   const today = dashboard?.today;
 
   return (
-    <section className="settings-card" aria-labelledby="cost-heading">
+    <section id={id} className="settings-card" aria-labelledby="cost-heading">
       <div className="section-heading">
         <div>
           <span className="step">05</span>
           <h2 id="cost-heading">{t('cost.section.title')}</h2>
         </div>
         <span className="badge">
-          <CircleDollarSign aria-hidden="true" size={12} strokeWidth={2} />
+          <CoinIcon size={12} />
           可选
         </span>
       </div>
@@ -209,7 +211,7 @@ export function CostSettingsCard({ model }: CostSettingsCardProps) {
       </p>
       <div className="card-actions">
         <button className="secondary-button" type="button" onClick={save} disabled={busy}>
-          <Save aria-hidden="true" size={14} strokeWidth={2} />
+          <SaveIcon size={14} />
           {busy ? '处理中…' : '保存费用提醒'}
         </button>
       </div>

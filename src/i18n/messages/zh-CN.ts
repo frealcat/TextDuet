@@ -263,6 +263,8 @@ export const MESSAGES_ZH_CN: MessageDict = {
   'languagePair.sourceLabel': '当前语言',
   'languagePair.targetLabel': '翻译到',
   'languagePair.followSystem': '跟随系统（{language}）',
+  'languagePair.swap': '交换',
+  'languagePair.swapTitle': '交换源语言与目标语言',
 
   // ---- 内容脚本（translator.ts）----
   // popup 调用后台时返回的消息
