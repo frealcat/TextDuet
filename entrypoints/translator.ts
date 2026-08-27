@@ -40,7 +40,7 @@ import { resolveSiteRule } from '@/src/translator/site-rules';
 import { collectStyleContext } from '@/src/translator/style-context';
 import { captureSelectionAnchor, getCapturedSelection, renderSelectionError, renderSelectionTranslation } from '@/src/translator/selection-translation';
 import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
-import { TranslationMemory } from '@/src/translator/translation-memory';
+import { bindCachedTranslation, TranslationMemory } from '@/src/translator/translation-memory';
 import { createLeadingThrottle } from '@/src/translator/scheduler-helper';
 import type { TranslatedBlock } from '@/src/core/contracts';
 
@@ -344,7 +344,14 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
         toTranslate = [];
         for (const entry of lookups) {
           if (entry.hit) {
-            cached.push({ candidate: entry.candidate, block: entry.hit });
+            // TranslationMemory deliberately caches the provider response as
+            // received, including its original block id. The renderer joins
+            // by the current candidate id, so rebind only the cached result
+            // (never the DOM node) before rendering this real occurrence.
+            cached.push({
+              candidate: entry.candidate,
+              block: bindCachedTranslation(entry.hit, entry.candidate.id),
+            });
           } else {
             toTranslate.push(entry.candidate);
           }

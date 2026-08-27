@@ -19,25 +19,21 @@ export const TRANSLATION_BLOCK_SELECTOR =
     'h1, h2, h3, h4, h5, h6, p, li, blockquote, td, figcaption',
     'article, [role="article"], [role="listitem"]',
     'span, div, section',
-    // Tab strip: ARIA tabs are typically <button role="tab"> or
-    // <a role="tab">. The role selector keeps the catch inclusive without
-    // re-introducing the generic <button> exclusion for action buttons
-    // (e.g. "发布讨论" / "保存") that should stay in source language.
-    '[role="tab"]',
     // Navigation and shell copy is useful reading content too. Keep the
-    // selector narrow so controls are still excluded by the ancestor rules.
+    // selector narrow. Interactive controls are excluded independently
+    // below, even when they sit inside one of these landmarks.
     'header a, header p, header li, header h1, header h2, header h3, header h4, header h5, header h6',
-    'header button, header span, header div, header section',
+    'header span, header div, header section',
     'nav a, [role="navigation"] a',
-    'nav button, [role="navigation"] button, nav span, nav div, nav section',
+    'nav span, nav div, nav section',
     'footer a, footer p, footer li, footer h1, footer h2, footer h3, footer h4, footer h5, footer h6',
-    'footer button, footer span, footer div, footer section',
+    'footer span, footer div, footer section',
     // Sidebar / complementary content (forum nav, doc TOC, settings panels)
     // is also part of the page shell users want translated. Sites with
     // sidebar widgets that should NOT be translated (e.g. doc-side TOC in
     // framework-docs) opt out via site rule's `excludedSelectors`.
     'aside a, aside p, aside li, aside h1, aside h2, aside h3, aside h4, aside h5, aside h6',
-    'aside button, aside span, aside div, aside section',
+    'aside span, aside div, aside section',
     // Sites that do not use the semantic <header> / <footer> tags rely on
     // ARIA landmarks. The WAI-ARIA spec maps role="banner" to <header>,
     // role="contentinfo" to <footer>, and role="complementary" to <aside>;
@@ -45,12 +41,63 @@ export const TRANSLATION_BLOCK_SELECTOR =
     // the tag they pick. Adding the role selectors covers Gatsby / Next /
     // custom shells that use <div role>.
     '[role="banner"] a, [role="banner"] p, [role="banner"] li, [role="banner"] h1, [role="banner"] h2, [role="banner"] h3, [role="banner"] h4, [role="banner"] h5, [role="banner"] h6',
-    '[role="banner"] button, [role="banner"] span, [role="banner"] div, [role="banner"] section',
+    '[role="banner"] span, [role="banner"] div, [role="banner"] section',
     '[role="contentinfo"] a, [role="contentinfo"] p, [role="contentinfo"] li, [role="contentinfo"] h1, [role="contentinfo"] h2, [role="contentinfo"] h3, [role="contentinfo"] h4, [role="contentinfo"] h5, [role="contentinfo"] h6',
-    '[role="contentinfo"] button, [role="contentinfo"] span, [role="contentinfo"] div, [role="contentinfo"] section',
+    '[role="contentinfo"] span, [role="contentinfo"] div, [role="contentinfo"] section',
     '[role="complementary"] a, [role="complementary"] p, [role="complementary"] li, [role="complementary"] h1, [role="complementary"] h2, [role="complementary"] h3, [role="complementary"] h4, [role="complementary"] h5, [role="complementary"] h6',
-    '[role="complementary"] button, [role="complementary"] span, [role="complementary"] div, [role="complementary"] section',
+    '[role="complementary"] span, [role="complementary"] div, [role="complementary"] section',
   ].join(', ');
+
+/**
+ * Interactive controls are not reading content. Keep this selector separate
+ * from the broader non-reading exclusion list so container candidates
+ * such as a bare SPA `<div>` can be rejected when their text comes from a
+ * nested control. This prevents us from translating a button indirectly by
+ * translating its wrapper.
+ *
+ * Links are deliberately absent: a paragraph may legitimately contain an
+ * inline link, and shell links are useful navigation labels to translate.
+ */
+export const TRANSLATION_INTERACTIVE_CONTROL_SELECTOR = [
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'summary',
+  'option',
+  'optgroup',
+  'form',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="button"]',
+  '[role="checkbox"]',
+  '[role="combobox"]',
+  '[role="menuitem"]',
+  '[role="menuitemcheckbox"]',
+  '[role="menuitemradio"]',
+  '[role="option"]',
+  '[role="radio"]',
+  '[role="search"]',
+  '[role="searchbox"]',
+  '[role="slider"]',
+  '[role="spinbutton"]',
+  '[role="switch"]',
+  '[role="tab"]',
+  '[role="textbox"]',
+].join(', ');
+
+/**
+ * These descendants must not leak through a generic candidate's aggregated
+ * `textContent`. They are intentionally narrower than the complete hard
+ * exclusion list: code/pre need a dedicated text-extraction policy because
+ * inline code can coexist with readable prose, whereas hidden/control text
+ * is never safe to send as part of a parent container.
+ */
+const TRANSLATION_NON_READING_DESCENDANT_SELECTOR = [
+  TRANSLATION_INTERACTIVE_CONTROL_SELECTOR,
+  '[aria-hidden="true"]',
+  '[hidden]',
+  '[inert]',
+].join(', ');
 
 export const TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR = [
   'script',
@@ -58,12 +105,7 @@ export const TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR = [
   'noscript',
   'code',
   'pre',
-  'textarea',
-  'input',
-  'select',
-  'button',
-  'form',
-  '[contenteditable]:not([contenteditable="false"])',
+  TRANSLATION_INTERACTIVE_CONTROL_SELECTOR,
   '[aria-hidden="true"]',
   '[hidden]',
   '[inert]',
@@ -139,6 +181,7 @@ export function collectTranslationCandidates(
     headerFooterExtras,
     ...(options.siteRule?.blockSelectors || []),
   ].filter((selector) => selector.length > 0).join(', ');
+  const nonReadingContainers = collectNonReadingContainers(document);
   // TreeWalker (Layer 3) replaces the prior `querySelectorAll` + Set
   // dedup. The walker rejects ALWAYS_EXCLUDED subtrees in one pass, so
   // we do not have to inspect every node again in the flatMap below.
@@ -175,17 +218,15 @@ export function collectTranslationCandidates(
     const block = planTranslationBlock({
       id: options.getId(element),
       text: options.getText(element),
-      // Only ancestors (not the element itself) decide exclusion. Without
-      // this, a <button> that the block selector picks up (e.g. via
-      // `aside button`) would still be excluded by the `button` entry in
-      // ALWAYS_EXCLUDED, because Element.closest matches the element
-      // itself. Walking only parents lets the explicit block-selector
-      // hit on a shell button take effect.
-      isExcluded: hasAncestorMatching(
+      // Controls must never become translation candidates, either directly
+      // (a <button> in a shell landmark) or indirectly (a bare SPA <div>
+      // whose only text is nested in a button). Site-rule inclusion can
+      // override a site-specific exclusion but never this safety boundary.
+      isExcluded: hasMatchingSelfOrAncestor(
         element,
-        isExplicitlyIncluded
-          ? TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR
-          : excludedSelector,
+        TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR,
+      ) || nonReadingContainers.has(element) || (
+        !isExplicitlyIncluded && hasAncestorMatching(element, excludedSelector)
       ),
       isVisible: isVisible(element),
     });
@@ -243,6 +284,47 @@ function hasAncestorMatching(element: HTMLElement, selector: string): boolean {
   return false;
 }
 
+/** Includes the candidate itself for hard safety exclusions. */
+function hasMatchingSelfOrAncestor(element: HTMLElement, selector: string): boolean {
+  let current: HTMLElement | null = element;
+  while (current) {
+    try {
+      if (current.matches(selector)) return true;
+    } catch {
+      // A malformed site selector must not prevent page translation. The
+      // built-in control selector is static and valid in supported Chrome.
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
+/**
+ * Generic containers may be valid reading blocks on utility-first SPAs. Mark
+ * every ancestor of an interactive or hidden descendant once per scan: their
+ * aggregate text would otherwise translate a control label or leak hidden
+ * text. Safe semantic siblings (for example a `<p>`) remain candidates after
+ * pruning. This one-pass marking avoids a `querySelector` call for every
+ * span/div/section candidate on a large page.
+ */
+function collectNonReadingContainers(document: Document): WeakSet<HTMLElement> {
+  const containers = new WeakSet<HTMLElement>();
+  try {
+    document.querySelectorAll<HTMLElement>(TRANSLATION_NON_READING_DESCENDANT_SELECTOR).forEach((control) => {
+      let parent = control.parentElement;
+      while (parent) {
+        containers.add(parent);
+        parent = parent.parentElement;
+      }
+    });
+  } catch {
+    // The built-in selector is static and valid in Chrome. If a non-standard
+    // DOM implementation rejects it, conservatively fall back to the
+    // self/ancestor hard exclusion already applied above.
+  }
+  return containers;
+}
+
 /**
  * Generator-based DOM walk that visits every element under `root`
  * matching `selector`. Used by the Layer 3 TreeWalker optimisation
@@ -274,7 +356,7 @@ export function* walkTextCandidates(
     // TreeWalker is not available (very old browser or non-DOM env);
     // fall back to a plain querySelectorAll + JS filter pass.
     for (const el of Array.from(root.querySelectorAll<HTMLElement>('*'))) {
-      if (hasAncestorMatching(el, skipSubtreeSelector)) continue;
+      if (hasMatchingSelfOrAncestor(el, skipSubtreeSelector)) continue;
       try {
         if (el.matches(selector)) yield el;
       } catch {
@@ -297,7 +379,7 @@ export function* walkTextCandidates(
   let current: Node | null = walker.nextNode();
   while (current) {
     const element = current as HTMLElement;
-    if (hasAncestorMatching(element, skipSubtreeSelector)) {
+    if (hasMatchingSelfOrAncestor(element, skipSubtreeSelector)) {
       current = walker.nextNode();
       continue;
     }

@@ -132,7 +132,7 @@ describe('dom-extraction header / footer selectors', () => {
     ).not.toThrow();
   });
 
-  it('keeps excluding controls inside header / footer landmarks', () => {
+  it('keeps shell controls excluded while retaining nearby reading copy and links', () => {
     const document = makeDocument(`
       <main>
         <header>
@@ -159,5 +159,331 @@ describe('dom-extraction header / footer selectors', () => {
         getText: GET_TEXT,
       }),
     ).not.toThrow();
+  });
+});
+
+describe('dom-extraction aside / complementary', () => {
+  it('exposes aside and [role="complementary"] in the default block selector', () => {
+    expect(TRANSLATION_BLOCK_SELECTOR).toContain('aside a');
+    expect(TRANSLATION_BLOCK_SELECTOR).toContain('aside p');
+    expect(TRANSLATION_BLOCK_SELECTOR).toContain('aside li');
+    expect(TRANSLATION_BLOCK_SELECTOR).toContain('[role="complementary"] a');
+  });
+
+  it('collects sidebar nav links and items inside <aside>', () => {
+    const document = makeDocument(`
+      <main>
+        <aside>
+          <nav>
+            <a href="/a">All Topics</a>
+            <a href="/b">Favorites</a>
+          </nav>
+          <ul>
+            <li>Section one</li>
+            <li>Section two</li>
+          </ul>
+          <p>Sidebar intro</p>
+        </aside>
+        <article><p>Body</p></article>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('All Topics');
+    expect(texts).toContain('Favorites');
+    expect(texts).toContain('Section one');
+    expect(texts).toContain('Section two');
+    expect(texts).toContain('Sidebar intro');
+  });
+
+  it('collects [role="complementary"] descendants', () => {
+    const document = makeDocument(`
+      <main>
+        <div role="complementary">
+          <a href="/a">Complementary link</a>
+          <p>Complementary paragraph</p>
+        </div>
+        <article><p>Body</p></article>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('Complementary link');
+    expect(texts).toContain('Complementary paragraph');
+  });
+
+  it('keeps aside buttons excluded while retaining sidebar links', () => {
+    const document = makeDocument(`
+      <main>
+        <aside>
+          <a href="/a">Sidebar link</a>
+          <button>Login</button>
+        </aside>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('Sidebar link');
+    expect(texts).not.toContain('Login');
+  });
+
+  it('site rule can still opt out of aside (e.g. framework-docs TOC)', () => {
+    const document = makeDocument(`
+      <main>
+        <aside>
+          <a href="/a">Doc TOC item</a>
+        </aside>
+        <article><p>Body</p></article>
+      </main>
+    `);
+    const rule: SiteRule = {
+      id: 'framework-docs',
+      hostnames: ['react.dev'],
+      rootSelectors: ['main', 'article'],
+      excludedSelectors: ['aside', '.sidebar', '.toc'],
+    };
+    const candidates = collectTranslationCandidates(document as never, {
+      getId: GET_ID,
+      getText: GET_TEXT,
+      isVisible: ALWAYS_VISIBLE,
+      siteRule: rule,
+    });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('Doc TOC item');
+    expect(texts).toContain('Body');
+  });
+});
+
+describe('dom-extraction article / listitem', () => {
+  it('exposes article and ARIA list-item in the default block selector', () => {
+    expect(TRANSLATION_BLOCK_SELECTOR).toContain('article');
+    expect(TRANSLATION_BLOCK_SELECTOR).toContain('[role="article"]');
+    expect(TRANSLATION_BLOCK_SELECTOR).toContain('[role="listitem"]');
+  });
+
+  it('collects <span> badges / tags / inline labels as standalone blocks', () => {
+    const document = makeDocument(`
+      <main>
+        <div>
+          <h3>Weekly project update</h3>
+          <span>Announcement</span>
+          <p>The team completed the accessibility review.</p>
+        </div>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('Weekly project update');
+    expect(texts).toContain('Announcement');
+    expect(texts).toContain('The team completed the accessibility review.');
+  });
+
+  it('collects [role="listitem"] for ARIA-based feed cards', () => {
+    const document = makeDocument(`
+      <main>
+        <ul role="feed">
+          <li role="listitem">
+            <h3>Post one</h3>
+            <p>Snippet one</p>
+          </li>
+          <li role="listitem">
+            <h3>Post two</h3>
+            <p>Snippet two</p>
+          </li>
+        </ul>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('Post one');
+    expect(texts).toContain('Snippet one');
+    expect(texts).toContain('Post two');
+    expect(texts).toContain('Snippet two');
+  });
+
+  it('does not collect empty <span> (icon containers, SVG wrappers)', () => {
+    const document = makeDocument(`
+      <main>
+        <article>
+          <h3>Title</h3>
+          <span><svg viewBox="0 0 24 24"></svg></span>
+          <span>Visible badge</span>
+        </article>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('Visible badge');
+    // The svg-only span has no textContent so it is filtered by getText
+    expect(texts).not.toContain('');
+  });
+});
+
+describe('dom-extraction SPA shell coverage', () => {
+  it('collects <div> post cards and prunes descendants to the deepest block', () => {
+    const document = makeDocument(`
+      <main>
+        <div>
+          <span>交流互助</span>
+          <h3>Weekly project update</h3>
+          <p>The team shipped the release candidate on time.</p>
+        </div>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    // Pruning keeps the deepest block per branch (h3 + p + span are kept;
+    // the wrapping div is removed because it has candidate descendants).
+    expect(texts).toContain('Weekly project update');
+    expect(texts).toContain('The team shipped the release candidate on time.');
+    expect(texts).toContain('交流互助');
+  });
+
+  it('does not collect sidebar navigation buttons', () => {
+    const document = makeDocument(`
+      <aside>
+        <nav>
+          <button type="button">全部话题</button>
+          <button type="button">收藏</button>
+        </nav>
+      </aside>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('全部话题');
+    expect(texts).not.toContain('收藏');
+  });
+
+  it('does not collect ARIA tab controls', () => {
+    const document = makeDocument(`
+      <main>
+        <div>
+          <button role="tab" type="button">最新发布</button>
+          <button role="tab" type="button">最新回复</button>
+        </div>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('最新发布');
+    expect(texts).not.toContain('最新回复');
+  });
+
+  it('does not translate a generic container whose only text is an action control', () => {
+    const document = makeDocument(`
+      <main>
+        <div>
+          <button type="button">发布讨论</button>
+        </div>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('发布讨论');
+  });
+
+  it('retains semantic reading text next to an excluded action control', () => {
+    const document = makeDocument(`
+      <main>
+        <div>
+          <p>Discussion summary</p>
+          <button type="button">发布讨论</button>
+        </div>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('Discussion summary');
+    expect(texts).not.toContain('发布讨论');
+  });
+
+  it('still collects a bare non-interactive SPA reading container', () => {
+    const document = makeDocument(`
+      <main><div>Utility-first reading copy without semantic markup.</div></main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    expect(candidates.map((c) => c.text)).toContain('Utility-first reading copy without semantic markup.');
+  });
+
+  it('excludes non-button ARIA controls and their wrapper text', () => {
+    const document = makeDocument(`
+      <main>
+        <div role="switch">Enable translations</div>
+        <div><span role="menuitem">Settings</span></div>
+        <p>Readable summary</p>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('Enable translations');
+    expect(texts).not.toContain('Settings');
+    expect(texts).toContain('Readable summary');
+  });
+
+  it('excludes role-button links and contenteditable controls without excluding ordinary links', () => {
+    const document = makeDocument(`
+      <main>
+        <nav>
+          <a href="/read">Read documentation</a>
+          <a href="/open" role="button">Open panel</a>
+        </nav>
+        <div contenteditable="true">Draft title</div>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).toContain('Read documentation');
+    expect(texts).not.toContain('Open panel');
+    expect(texts).not.toContain('Draft title');
+  });
+
+  it('excludes generic wrappers around native summary controls', () => {
+    const document = makeDocument(`
+      <main>
+        <div><summary>Show details</summary></div>
+        <p>Static details summary</p>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('Show details');
+    expect(texts).toContain('Static details summary');
+  });
+
+  it('excludes a generic wrapper around an ARIA search control', () => {
+    const document = makeDocument(`
+      <main>
+        <div><div role="search">Search products</div></div>
+        <p>Product catalogue</p>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('Search products');
+    expect(texts).toContain('Product catalogue');
+  });
+
+  it('does not aggregate hidden descendant text into a generic container', () => {
+    const document = makeDocument(`
+      <main>
+        <div><span aria-hidden="true">Private hint</span></div>
+        <p>Public reading copy</p>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    const texts = candidates.map((c) => c.text);
+    expect(texts).not.toContain('Private hint');
+    expect(texts).toContain('Public reading copy');
+  });
+
+  it('prefers excluding a mixed bare container to translating its control label', () => {
+    const document = makeDocument(`
+      <main><div>Article summary <button type="button">Read more</button></div></main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, { getId: GET_ID, getText: GET_TEXT, isVisible: ALWAYS_VISIBLE });
+    // There is no semantic child that can carry only the reading text. The
+    // conservative contract keeps both strings out rather than sending the
+    // action label to the model as part of a container aggregate.
+    expect(candidates.map((c) => c.text)).not.toContain('Article summary Read more');
   });
 });

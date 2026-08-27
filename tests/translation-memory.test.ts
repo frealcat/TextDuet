@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { TranslationMemory, type BroadcastChannelLike } from '@/src/translator/translation-memory';
+import {
+  bindCachedTranslation,
+  TranslationMemory,
+  type BroadcastChannelLike,
+} from '@/src/translator/translation-memory';
 import type { TranslatedBlock } from '@/src/core/contracts';
 
 function makeDocument(html: string): Document {
@@ -80,6 +84,21 @@ describe('TranslationMemory (Layer 5)', () => {
     const b = await mem.get('Hello', 'en', 'gpt-4o-mini');
     expect(a).toEqual(b);
     expect(a?.translatedText).toBe('你好');
+  });
+
+  it('rebinds a cached result to the current DOM candidate without mutating the cache value', () => {
+    const cached: TranslatedBlock = {
+      id: 'original-request-id',
+      translatedText: 'Home',
+      colorPreference: 'preferred',
+    };
+    const rebound = bindCachedTranslation(cached, 'current-dom-id');
+    expect(rebound).toEqual({
+      id: 'current-dom-id',
+      translatedText: 'Home',
+      colorPreference: 'preferred',
+    });
+    expect(cached.id).toBe('original-request-id');
   });
 
   it('isolates different target languages from each other', async () => {

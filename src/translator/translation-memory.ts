@@ -65,6 +65,19 @@ interface L3Envelope {
 
 const DEFAULT_MAX_L3_ENTRIES = 2000;
 
+/**
+ * A cached block belongs to the source request that first produced it. Its
+ * `id` is therefore not reusable for a newly collected DOM candidate. Keep
+ * the validated translation payload, but bind it to the current candidate
+ * before passing it to the renderer, which intentionally joins by id.
+ */
+export function bindCachedTranslation(
+  cached: TranslatedBlock,
+  candidateId: string,
+): TranslatedBlock {
+  return { ...cached, id: candidateId };
+}
+
 export class TranslationMemory {
   private readonly l1 = new WeakMap<HTMLElement, TranslatedBlock>();
   private readonly l2 = new Map<string, TranslatedBlock>();
