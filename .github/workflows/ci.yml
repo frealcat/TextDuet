@@ -60,7 +60,7 @@ jobs:
             npm run test:browser:smoke
       - name: Upload fixture server log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: textduet-fixture-server-log
           path: ${{ runner.temp }}/textduet-fixtures.log
