@@ -17,10 +17,20 @@ import {
 } from '@/src/storage/cost-service';
 import { getApiKey, providerSettingsStorage } from '@/src/storage/settings';
 import {
+  getTranslationCacheGeneration,
   lookupTranslationCache,
   storeTranslationCache,
   type TranslationCacheLookup,
 } from '@/src/storage/translation-cache';
+import { hasTranslationConsent } from '@/src/storage/translation-consent';
+
+/** Raised before a cache miss would send visible webpage text to a Provider. */
+export class TranslationConsentRequiredError extends Error {
+  constructor() {
+    super('首次发送网页文本前需要确认数据去向与模型费用');
+    this.name = 'TranslationConsentRequiredError';
+  }
+}
 
 interface SafeCacheLookup extends TranslationCacheLookup {
   isAvailable: boolean;
@@ -70,6 +80,7 @@ export async function translateWithCache(
   request: TranslationBatchRequest,
   signal: AbortSignal,
 ): Promise<TranslationBatchResponse> {
+  const cacheGeneration = getTranslationCacheGeneration();
   const settings = await getConfiguredSettings();
   const systemPrompt = resolveSystemPrompt(settings, request);
   const cache = await lookupCacheSafely(settings, request, systemPrompt);
@@ -81,8 +92,9 @@ export async function translateWithCache(
 
   if (cache.missingBlocks.length === 0) {
     const dashboard = await getCostDashboard(settings.model);
+    const blocks = mergeTranslationBlocks(request.blocks, cache.cachedBlocks, []);
     return {
-      blocks: mergeTranslationBlocks(request.blocks, cache.cachedBlocks, []),
+      blocks,
       model: settings.model,
       usage: { inputTokens: 0, outputTokens: 0, kind: 'cached' },
       cost: {
@@ -97,12 +109,19 @@ export async function translateWithCache(
     };
   }
 
+  await assertTranslationConsent();
+
   const uncachedRequest = {
     sourceLanguage: request.sourceLanguage,
     targetLanguage: request.targetLanguage,
     blocks: cache.missingBlocks,
   };
-  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
+  // TD-2026-028: resolve through the per-origin map so a baseUrl switch
+  // uses the key saved for the current origin instead of the legacy
+  // global slot (which holds only the last saved key).
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl, {
+    apiKeyByOrigin: settings.apiKeyByOrigin,
+  });
   const result = await provider.translate(settings, apiKey, uncachedRequest, { signal });
   const settlement = await settleTranslation(
     settings,
@@ -115,10 +134,8 @@ export async function translateWithCache(
     uncachedRequest,
     systemPrompt,
     result.blocks,
-  ).then(
-    () => true,
-    () => false,
-  );
+    { generation: cacheGeneration },
+  ).then((stored) => stored !== false, () => false);
 
   return {
     blocks: mergeTranslationBlocks(request.blocks, cache.cachedBlocks, result.blocks),
@@ -138,28 +155,38 @@ export async function translateStreamWithCache(
   signal: AbortSignal,
   onBlock: (block: TranslatedBlock) => void,
 ): Promise<TranslationBatchResponse> {
+  const cacheGeneration = getTranslationCacheGeneration();
   const settings = await getConfiguredSettings();
   const systemPrompt = resolveSystemPrompt(settings, request);
   const cache = await lookupCacheSafely(settings, request, systemPrompt);
   const cacheSummary = { hitCount: cache.cachedBlocks.length, missCount: cache.missingBlocks.length, isAvailable: cache.isAvailable };
-  cache.cachedBlocks.forEach(onBlock);
   if (cache.missingBlocks.length === 0) {
     const dashboard = await getCostDashboard(settings.model);
+    const blocks = mergeTranslationBlocks(request.blocks, cache.cachedBlocks, []);
+    blocks.forEach(onBlock);
     return {
-      blocks: mergeTranslationBlocks(request.blocks, cache.cachedBlocks, []),
+      blocks,
       model: settings.model, usage: { inputTokens: 0, outputTokens: 0, kind: 'cached' },
       cost: { currency: dashboard.today.currency, amount: 0, isEstimate: false, today: dashboard.today, crossedThresholds: [], isLedgerRecorded: true },
       cache: cacheSummary,
     };
   }
+  await assertTranslationConsent();
   const uncachedRequest = { sourceLanguage: request.sourceLanguage, targetLanguage: request.targetLanguage, blocks: cache.missingBlocks };
-  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
-  const streamedBlocks: TranslatedBlock[] = [];
+  // TD-2026-028: resolve through the per-origin map so a baseUrl switch
+  // uses the key saved for the current origin instead of the legacy
+  // global slot (which holds only the last saved key).
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl, {
+    apiKeyByOrigin: settings.apiKeyByOrigin,
+  });
   let result;
   try {
     result = await provider.translateStream(settings, apiKey, uncachedRequest, {
       signal,
-      onBlock: (block) => { streamedBlocks.push(block); onBlock(block); },
+      // Keep provider callbacks inside the trusted worker until the complete
+      // response has passed envelope and ID validation. A provider must not be
+      // able to leave partial DOM output when its stream later fails.
+      onBlock: () => undefined,
     });
   } catch (error) {
     const usage = error && typeof error === 'object' && 'usage' in error
@@ -169,11 +196,19 @@ export async function translateStreamWithCache(
     throw error;
   }
   const settlement = await settleTranslation(settings, uncachedRequest, systemPrompt, result.usage);
-  const isCacheStored = streamedBlocks.length === uncachedRequest.blocks.length
-    ? await storeTranslationCache(settings, uncachedRequest, systemPrompt, streamedBlocks).then(() => true, () => false)
-    : false;
+  const mergedBlocks = mergeTranslationBlocks(request.blocks, cache.cachedBlocks, result.blocks);
+  const isCacheStored = await storeTranslationCache(
+    settings,
+    uncachedRequest,
+    systemPrompt,
+    result.blocks,
+    { generation: cacheGeneration },
+  ).then((stored) => stored !== false, () => false);
+  // Publish only the validated, complete response after bookkeeping has a
+  // coherent result. The caller can safely render these blocks atomically.
+  mergedBlocks.forEach(onBlock);
   return {
-    blocks: mergeTranslationBlocks(request.blocks, cache.cachedBlocks, result.blocks),
+    blocks: mergedBlocks,
     model: result.model, usage: settlement.usage, cost: settlement.cost,
     cache: { ...cacheSummary, isAvailable: cacheSummary.isAvailable && isCacheStored },
   };
@@ -181,6 +216,10 @@ export async function translateStreamWithCache(
 
 async function getConfiguredSettings(): Promise<ProviderSettings> {
   return parseConfiguredProviderSettings(await providerSettingsStorage.getValue());
+}
+
+async function assertTranslationConsent(): Promise<void> {
+  if (!(await hasTranslationConsent())) throw new TranslationConsentRequiredError();
 }
 
 async function lookupCacheSafely(

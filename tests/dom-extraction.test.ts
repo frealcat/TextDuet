@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseHTML } from 'linkedom';
 import {
   TRANSLATION_BLOCK_SELECTOR,
+  TRANSLATION_SEMANTIC_READING_SELECTOR,
   collectTranslationCandidates,
 } from '@/src/translator/dom-extraction';
 import type { SiteRule } from '@/src/translator/site-rules';
@@ -160,6 +161,24 @@ describe('dom-extraction header / footer selectors', () => {
       }),
     ).not.toThrow();
   });
+
+  it('never treats TextDuet-owned page and selection spans as new source content', () => {
+    const document = makeDocument(`
+      <main>
+        <h1>Readable page title</h1>
+        <span class="textduet-source">Readable page title</span>
+        <span class="textduet-translation">Titre de page lisible</span>
+        <span class="textduet-selection-translation">Traduction de sélection</span>
+        <span class="textduet-selection-error">TextDuet：error</span>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, {
+      getId: GET_ID,
+      getText: GET_TEXT,
+      isVisible: ALWAYS_VISIBLE,
+    });
+    expect(candidates.map(({ text }) => text)).toEqual(['Readable page title']);
+  });
 });
 
 describe('dom-extraction aside / complementary', () => {
@@ -259,6 +278,7 @@ describe('dom-extraction article / listitem', () => {
     expect(TRANSLATION_BLOCK_SELECTOR).toContain('article');
     expect(TRANSLATION_BLOCK_SELECTOR).toContain('[role="article"]');
     expect(TRANSLATION_BLOCK_SELECTOR).toContain('[role="listitem"]');
+    expect(TRANSLATION_SEMANTIC_READING_SELECTOR).toContain('[role="listitem"]');
   });
 
   it('collects <span> badges / tags / inline labels as standalone blocks', () => {
@@ -485,5 +505,69 @@ describe('dom-extraction SPA shell coverage', () => {
     // conservative contract keeps both strings out rather than sending the
     // action label to the model as part of a container aggregate.
     expect(candidates.map((c) => c.text)).not.toContain('Article summary Read more');
+  });
+
+  it('keeps semantic prose when an inline native control is present', () => {
+    const document = makeDocument(`
+      <main>
+        <article data-test="article">Article body <button type="button">Read more</button></article>
+        <div role="listitem" data-test="listitem">Card summary <button type="button">Open card</button></div>
+        <p data-test="paragraph">Paragraph copy <button type="button">Share</button></p>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, {
+      getId: GET_ID,
+      // Deliberately use raw textContent: the extractor itself must enforce
+      // the no-control-text boundary for custom callers as well.
+      getText: GET_TEXT,
+      isVisible: ALWAYS_VISIBLE,
+    });
+    const texts = candidates.map((candidate) => candidate.text);
+
+    expect(texts).toContain('Article body');
+    expect(texts).toContain('Card summary');
+    expect(texts).toContain('Paragraph copy');
+    expect(texts).not.toContain('Article body Read more');
+    expect(texts).not.toContain('Card summary Open card');
+    expect(texts).not.toContain('Paragraph copy Share');
+    expect(texts).not.toContain('Read more');
+    expect(texts).not.toContain('Open card');
+    expect(texts).not.toContain('Share');
+  });
+
+  it('keeps direct prose around inline formatting instead of pruning the semantic parent', () => {
+    const document = makeDocument(`
+      <main>
+        <p data-test="formatted">Lead sentence <span>inline phrase</span> trailing text <button type="button">Action</button></p>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, {
+      getId: GET_ID,
+      getText: GET_TEXT,
+      isVisible: ALWAYS_VISIBLE,
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.element.tagName).toBe('P');
+    expect(candidates[0]?.text).toBe('Lead sentence inline phrase trailing text');
+  });
+
+  it('strips hidden and inert descendants from semantic reading text', () => {
+    const document = makeDocument(`
+      <main>
+        <p data-test="visible">Visible paragraph <span hidden>Private hint</span><span inert>Deferred hint</span></p>
+      </main>
+    `);
+    const candidates = collectTranslationCandidates(document as never, {
+      getId: GET_ID,
+      getText: GET_TEXT,
+      isVisible: ALWAYS_VISIBLE,
+    });
+    const texts = candidates.map((candidate) => candidate.text);
+
+    expect(texts).toContain('Visible paragraph');
+    expect(texts).not.toContain('Visible paragraph Private hint Deferred hint');
+    expect(texts).not.toContain('Private hint');
+    expect(texts).not.toContain('Deferred hint');
   });
 });

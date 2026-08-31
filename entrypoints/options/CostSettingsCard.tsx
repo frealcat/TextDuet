@@ -4,7 +4,7 @@ import type { CostDashboard, CostSettings, RuntimeMessage } from '@/src/core/con
 import { getLocalDateKey } from '@/src/core/cost';
 import { DEFAULT_COST_SETTINGS } from '@/src/core/defaults';
 import { parseCostDashboard, parseOperationResult } from '@/src/core/schemas';
-import { t } from '@/src/i18n';
+import { useTranslation } from '@/src/i18n';
 
 interface CostSettingsCardProps {
   model: string;
@@ -12,10 +12,14 @@ interface CostSettingsCardProps {
   id?: string;
 }
 
+type StatusTone = 'danger' | 'info' | 'success' | 'warning';
+
 export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<CostSettings>(DEFAULT_COST_SETTINGS);
   const [dashboard, setDashboard] = useState<CostDashboard | null>(null);
   const [status, setStatus] = useState('');
+  const [statusTone, setStatusTone] = useState<StatusTone>('info');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -31,7 +35,8 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
       setDashboard(nextDashboard);
       setSettings(nextDashboard.settings);
     } catch {
-      setStatus('读取费用提醒配置失败，请重新加载扩展后重试');
+      setStatus(t('cost.status.readFailed'));
+      setStatusTone('danger');
     }
   }
 
@@ -57,16 +62,19 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
 
   async function save(): Promise<void> {
     if (settings.price.enabled && !model.trim()) {
-      setStatus('请先填写模型名称，再启用该模型的价格估算');
+      setStatus(t('cost.status.priceModelRequired'));
+      setStatusTone('warning');
       return;
     }
     if (settings.budget.enabled && settings.budget.dailyLimit <= 0) {
-      setStatus('启用每日预算时，预算金额必须大于 0');
+      setStatus(t('cost.status.budgetPositiveRequired'));
+      setStatusTone('warning');
       return;
     }
 
     setBusy(true);
     setStatus('');
+    setStatusTone('info');
     try {
       const nextSettings: CostSettings = {
         ...settings,
@@ -82,12 +90,14 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
         settings: nextSettings,
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
-      if (!result.ok) throw new Error(result.message || '保存费用提醒配置失败');
+      if (!result.ok) throw new Error();
       setSettings(nextSettings);
-      setStatus(result.message || '费用提醒配置已保存');
+      setStatus(t('cost.status.saved'));
+      setStatusTone('success');
       await refreshDashboard();
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : '保存费用提醒配置失败');
+    } catch {
+      setStatus(t('cost.status.saveFailed'));
+      setStatusTone('danger');
     } finally {
       setBusy(false);
     }
@@ -104,12 +114,12 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
         </div>
         <span className="badge">
           <CoinIcon size={12} />
-          可选
+          {t('cost.section.optional')}
         </span>
       </div>
 
       <p className="cost-disclaimer">
-        手动价格只用于翻译前预估与本地预算提醒，不会作为账单金额展示；最终费用以厂商账单为准。
+        {t('cost.disclaimer')}
       </p>
 
       <label className="toggle-row">
@@ -157,8 +167,10 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
         </label>
       </div>
       <small>
-        价格由你手动维护，不会从官方查询结果自动写入。绑定模型：
-        {settings.price.model || model || '尚未填写'} · 更新于 {settings.price.updatedAt}
+        {t('cost.price.disclaimer', {
+          model: settings.price.model || model || t('cost.price.modelEmpty'),
+          date: settings.price.updatedAt,
+        })}
       </small>
 
       <div className="budget-section">
@@ -171,7 +183,7 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
           <span>{t('cost.budget.enableLabel')}</span>
         </label>
         <label>
-          <span>每日预算（{settings.price.currency}）</span>
+          <span>{t('cost.budget.dailyLimit', { currency: settings.price.currency })}</span>
           <input
             type="number"
             min="0"
@@ -195,15 +207,7 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
       )}
 
       <p
-        className={`td-badge ${
-          /失败|错误|不能|不可|拒绝/.test(status)
-            ? 'td-badge--danger'
-            : /警告|注意|未配置/.test(status)
-              ? 'td-badge--warning'
-              : /成功|已|完成/.test(status)
-                ? 'td-badge--success'
-                : 'td-badge--info'
-        }`}
+        className={`td-badge td-badge--${statusTone}`}
         role="status"
         aria-live="polite"
       >
@@ -212,7 +216,7 @@ export function CostSettingsCard({ model, id }: CostSettingsCardProps) {
       <div className="card-actions">
         <button className="secondary-button" type="button" onClick={save} disabled={busy}>
           <SaveIcon size={14} />
-          {busy ? '处理中…' : '保存费用提醒'}
+          {busy ? t('cost.action.processing') : t('cost.action.save')}
         </button>
       </div>
     </section>

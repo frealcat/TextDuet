@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+      - name: Scan source secrets and licenses
+        run: npm run release:source-check
+      - name: Generate release metadata
+        run: npm run release:metadata
+      - name: Type check
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build and verify release artifact
+        run: npm run release:check
+      - name: Install Chromium for browser regression
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Run deterministic browser smoke regression
+        env:
+          EXTENSION_DIR: ${{ github.workspace }}/.output/chrome-mv3
+        run: |
+          node scripts/serve-fixtures.mjs > "$RUNNER_TEMP/textduet-fixtures.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if ! kill -0 "$fixture_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/textduet-fixtures.log"
+              exit 1
+            fi
+            curl --fail --silent http://127.0.0.1:8765/multilingual.html >/dev/null && break
+            sleep 1
+          done
+          kill -0 "$fixture_pid" 2>/dev/null || { cat "$RUNNER_TEMP/textduet-fixtures.log"; exit 1; }
+          curl --fail --silent http://127.0.0.1:8765/multilingual.html >/dev/null
+          PLAYWRIGHT_ENTRY="$(node --input-type=module -e 'process.stdout.write(await import.meta.resolve("playwright"))')" \
+            CHROME_EXECUTABLE="$(node --input-type=module -e 'const playwrightModule = await import("playwright"); const { chromium } = playwrightModule.default ?? playwrightModule; process.stdout.write(chromium.executablePath())')" \
+            EXTENSION_DIR="${{ github.workspace }}/.output/chrome-mv3" \
+            FIXTURE_URL=http://127.0.0.1:8765/multilingual.html \
+            npm run test:browser:smoke
+      - name: Upload fixture server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: textduet-fixture-server-log
+          path: ${{ runner.temp }}/textduet-fixtures.log
+          if-no-files-found: ignore
+      - name: Build public privacy pages
+        run: npm run pages:build
+      - name: Verify public privacy pages
+        run: npm run pages:verify
+      - name: Check whitespace
+        run: git diff --check
+      - name: Reject scripts and inline event handlers in Pages output
+        run: |
+          ! rg -n '<script\b|\bon[a-z][a-z0-9-]*\s*=' .pages

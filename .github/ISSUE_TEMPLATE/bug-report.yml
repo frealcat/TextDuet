@@ -1,0 +1,137 @@
+name: Bug report / 问题报告
+description: Report a reproducible TextDuet defect. / 报告可复现的 TextDuet 缺陷。
+title: "[Bug] "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a reproducible product defect. For questions, installation help, provider setup, or costs, use [Discussions](https://github.com/frealcat/TextDuet/discussions).
+
+        请使用本表单报告可复现的产品缺陷。安装、Provider 配置、费用和一般使用问题请前往 [Discussions](https://github.com/frealcat/TextDuet/discussions)。
+
+        **Never include API keys, authentication headers, private URLs, account information, unpublished text, page contents, or screenshots containing them.**
+
+        **不得提交 API Key、认证头、私密 URL、账户信息、未公开文本、网页正文或含有上述内容的截图。**
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened? / 问题概述
+      description: Give a short, user-visible summary. / 简要描述用户看到的问题。
+      placeholder: Translation stops after the first batch. / 翻译在第一批之后停止。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps / 复现步骤
+      description: Use a public page that works without an account whenever possible. / 尽量使用无需账户即可访问的公开页面。
+      placeholder: |
+        1. Open a public page
+        2. Configure a compatible HTTPS provider
+        3. Click Translate
+
+        1. 打开公开网页
+        2. 配置兼容的 HTTPS Provider
+        3. 点击“翻译”
+    validations:
+      required: true
+
+  - type: input
+    id: public_url
+    attributes:
+      label: Public example URL (optional) / 公开示例 URL（可选）
+      description: The URL must be publicly shareable and must not contain tokens, account identifiers, or private paths. / 仅填写可公开分享的 URL，不得包含令牌、账户标识或私密路径。
+      placeholder: https://example.com/public-page
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result / 预期结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result / 实际结果
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Reproducibility / 复现频率
+      options:
+        - Always / 每次
+        - Often / 经常
+        - Sometimes / 偶尔
+        - Once / 仅一次
+        - Unknown / 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_channel
+    attributes:
+      label: Installation channel / 安装渠道
+      options:
+        - Chrome Web Store / Chrome Web Store
+        - GitHub Release ZIP / GitHub Release ZIP
+        - Source build / 源码构建
+        - Other or unknown / 其他或不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 环境
+      description: Include TextDuet version, Chrome version, and operating system only. Do not paste diagnostics containing secrets or page text. / 仅填写 TextDuet、Chrome 和操作系统版本，不要粘贴含密钥或网页正文的诊断信息。
+      placeholder: |
+        TextDuet: 0.2.0
+        Chrome: 140.0.0000.0
+        OS: macOS 15 / Windows 11 / Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider family (no credentials) / Provider 类型（不要填写凭据）
+      description: Select the family or preset only. Never include an API key, authorization header, or secret endpoint. / 仅选择类型或预设，绝不要填写 API Key、认证头或私密端点。
+      options:
+        - OpenAI-compatible / OpenAI 兼容
+        - Qwen / 通义千问
+        - DeepSeek / DeepSeek
+        - OpenRouter / OpenRouter
+        - SiliconFlow / 硅基流动
+        - Custom HTTPS provider / 自定义 HTTPS Provider
+        - Not applicable / 不适用
+    validations:
+      required: true
+
+  - type: input
+    id: error_code
+    attributes:
+      label: Standardized error code (optional) / 标准化错误码（可选）
+      description: Share a short code shown by TextDuet, not a raw provider response or request. / 仅填写 TextDuet 显示的短错误码，不要粘贴 Provider 原始响应或请求。
+      placeholder: provider-auth, timeout, or network-unavailable
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context (optional) / 其他信息（可选）
+      description: Add safe, non-sensitive observations. Remove page text, form values, private links, keys, and account data. / 仅补充不敏感的观察；删除网页正文、表单值、私密链接、密钥和账户数据。
+
+  - type: checkboxes
+    id: privacy_confirmation
+    attributes:
+      label: Privacy confirmation / 隐私确认
+      options:
+        - label: I removed API keys, authentication headers, private URLs, account data, unpublished text, page contents, and sensitive screenshots. / 我已移除 API Key、认证头、私密 URL、账户数据、未公开文本、网页正文和敏感截图。
+          required: true

@@ -1,0 +1,71 @@
+name: Feature request / 功能建议
+description: Propose a focused improvement to TextDuet. / 提议一项明确的 TextDuet 改进。
+title: "[Feature] "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use [Discussions](https://github.com/frealcat/TextDuet/discussions) for early design questions. This form is for a concrete, user-facing proposal.
+
+        早期设计讨论请使用 [Discussions](https://github.com/frealcat/TextDuet/discussions)；本表单用于具体的用户可见功能建议。
+
+        **Do not include API keys, authentication headers, private URLs, account information, unpublished text, page contents, or sensitive screenshots.**
+
+        **不得提交 API Key、认证头、私密 URL、账户信息、未公开文本、网页正文或敏感截图。**
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and user need / 问题与用户需求
+      description: What task is difficult today, and who is affected? / 当前什么任务难以完成，哪些用户会受到影响？
+      placeholder: Readers need to translate a selected paragraph without translating the whole page. / 用户需要只翻译选中的段落，而不是整页翻译。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / 建议方案
+      description: Describe the smallest useful behavior and how it should work. / 描述最小可用行为及其工作方式。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 已考虑的替代方案
+      description: Explain workarounds or other approaches you tried. / 说明已尝试的替代办法或工作流。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact awareness / 影响评估
+      description: Consider privacy, permissions, provider costs, and page data before submitting. / 提交前请考虑隐私、权限、Provider 费用和网页数据影响。
+      options:
+        - No new permission, data, or provider-cost impact expected / 预计不增加权限、数据或 Provider 费用影响
+        - May affect permissions, privacy, page data, or cost / 可能影响权限、隐私、网页数据或费用
+        - Not sure; please help assess / 不确定，请协助评估
+    validations:
+      required: true
+
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Contribution interest (optional) / 贡献意愿（可选）
+      options:
+        - I may send a pull request / 我可能提交 PR
+        - I can help test / 我可以协助测试
+        - I am only proposing the idea / 仅提出建议
+
+  - type: checkboxes
+    id: privacy_confirmation
+    attributes:
+      label: Privacy confirmation / 隐私确认
+      options:
+        - label: I did not include API keys, authentication headers, private URLs, account data, unpublished text, page contents, or sensitive screenshots. / 我未提交 API Key、认证头、私密 URL、账户数据、未公开文本、网页正文或敏感截图。
+          required: true

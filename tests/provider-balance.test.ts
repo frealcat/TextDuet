@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchProviderBalance } from '@/src/providers/provider-balance';
+import {
+  fetchProviderBalance,
+  MAX_PROVIDER_BALANCE_RESPONSE_BYTES,
+} from '@/src/providers/provider-balance';
 
 const settings = {
   provider: 'openai-compatible' as const,
@@ -70,5 +73,16 @@ describe('Provider balance', () => {
       'local-test-placeholder',
       vi.fn().mockResolvedValue(new Response('private response body', { status: 401 })),
     )).rejects.toThrow('DeepSeek 拒绝认证');
+  });
+
+  it('rejects a balance response that exceeds the byte ceiling', async () => {
+    await expect(fetchProviderBalance(
+      settings,
+      'local-test-placeholder',
+      vi.fn().mockResolvedValue(new Response(
+        new Uint8Array(MAX_PROVIDER_BALANCE_RESPONSE_BYTES + 1),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )),
+    )).rejects.toThrow('余额接口响应超过大小限制');
   });
 });

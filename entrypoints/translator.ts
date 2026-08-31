@@ -17,9 +17,10 @@ import { createTranslationBatches } from '@/src/core/translation-planning';
 import {
   injectPageStyles,
   getPageTranslationState,
+  SOURCE_BLOCK_ID_ATTRIBUTE,
+  SELECTION_QUICK_ACTION_CLASS,
   setTranslationColor,
   setTranslationDisplayMode,
-  TRANSLATION_CLASS,
   updatePageStatus,
 } from '@/src/translator/page-status';
 import {
@@ -29,18 +30,36 @@ import {
 } from '@/src/translator/estimate-status';
 import { collectTranslationCandidates } from '@/src/translator/dom-extraction';
 import {
+  clearCandidate,
+  clearIneligibleManagedSources,
   DYNAMIC_CONTENT_SCAN_DELAY_MS,
+  isCurrentSourceText,
+  readTextWithoutTranslations,
   observeDynamicContent,
 } from '@/src/translator/dynamic-content';
 import {
   removeRenderedTranslations,
+  reconcileRenderedTranslation,
   renderTranslations,
 } from '@/src/translator/render-translations';
 import { resolveSiteRule } from '@/src/translator/site-rules';
 import { collectStyleContext } from '@/src/translator/style-context';
 import { captureSelectionAnchor, getCapturedSelection, renderSelectionError, renderSelectionTranslation } from '@/src/translator/selection-translation';
-import { applyLocale, type LanguagePreference, resolveActiveLocale, t } from '@/src/i18n';
+import { normalizeSelectionError } from '@/src/translator/selection-errors';
+import {
+  applyLocale,
+  type LanguagePreference,
+  resolveActiveLocale,
+  t,
+} from '@/src/i18n/translator-runtime';
 import { bindCachedTranslation, TranslationMemory } from '@/src/translator/translation-memory';
+import { advanceViewGeneration, isCurrentView } from '@/src/translator/view-generation';
+import {
+  isRetryableTranslationError,
+  normalizeTranslationStreamSendError,
+  requeueAfterLifecycleDisconnect,
+  TranslationLifecycleDisconnectError,
+} from '@/src/translator/stream-errors';
 import { createLeadingThrottle } from '@/src/translator/scheduler-helper';
 import type { TranslatedBlock } from '@/src/core/contracts';
 
@@ -55,6 +74,10 @@ const activeStreamPorts = new Set<Browser.runtime.Port>();
 const idsByElement = new WeakMap<HTMLElement, string>();
 const sourceTextByElement = new WeakMap<HTMLElement, string>();
 let activeRun: TranslationRun | null = null;
+// Nodes whose page-owned text changed since their previous scan. This is
+// cleared after each scan and prevents a reused SPA node from inheriting the
+// previous route's translation or failure suppression.
+let sourceTextChangedInScan = new Set<HTMLElement>();
 let lastRunSnapshot: {
   candidateCount: number;
   translatedCount: number;
@@ -63,6 +86,9 @@ let lastRunSnapshot: {
 
 interface TranslationRun {
   id: number;
+  /** Incremented whenever the SPA replaces the current view. In-flight work
+   * from an older generation may finish, but it must never touch the new DOM. */
+  viewGeneration: number;
   sourceLanguage: string;
   targetLanguage: string;
   displayMode: TranslationDisplayMode;
@@ -72,6 +98,7 @@ interface TranslationRun {
   forceRefresh: boolean;
   observer: import('@/src/translator/dynamic-content').DynamicContentHandle | null;
   scanTimer: number | undefined;
+  retryTimer: number | undefined;
   isProcessing: boolean;
   hasPendingScan: boolean;
   translatedIds: Set<string>;
@@ -79,8 +106,8 @@ interface TranslationRun {
   seenIds: Set<string>;
   failedBatchCount: number;
   /**
-   * L5: translation memory for cross-run / cross-tab cache hits. Created
-   * in `startActiveRun`; null when the user opts out or in tests.
+   * In-memory reuse scoped to this page run. Cross-tab and persistent reuse
+   * are resolved by the trusted Service Worker cache.
    */
   memory: import('@/src/translator/translation-memory').TranslationMemory | null;
   /**
@@ -131,14 +158,14 @@ export default defineUnlistedScript(() => {
         parsedMessage.headerPopupRescan === true,
         parsedMessage.forceRefresh ?? true,
       );
-      sendResponse({ ok: true, message: t('translator.message.started') });
+      sendResponse({ ok: true, message: t('translator.message.startedPage') });
       return false;
     }
 
     if (parsedMessage.type === 'TRANSLATE_SELECTION') {
       captureSelectionAnchor();
       void translateSelection(parsedMessage.text, parsedMessage.sourceLanguage, parsedMessage.targetLanguage, parsedMessage.translationColor);
-      sendResponse({ ok: true, message: t('translator.message.selectionStarted') });
+      sendResponse({ ok: true, message: t('translator.message.startedSelection') });
       return false;
     }
 
@@ -207,13 +234,18 @@ function startTranslationRun(
   forceRefresh: boolean,
 ): void {
   stopActiveRun();
+  // A previous run may have observed a mutation immediately before it was
+  // stopped. Those element references are page-owned state, not a reason to
+  // invalidate the first scan of the new run.
+  sourceTextChangedInScan.clear();
   removeRenderedTranslations();
   setTranslationDisplayMode(displayMode);
   setTranslationColor(translationColor);
-  updatePageStatus(t('translator.status.checking'), 'progress');
+  updatePageStatus(t('translator.status.checkingContent'), 'progress');
   const runId = ++activeRunId;
   const run: TranslationRun = {
     id: runId,
+    viewGeneration: 0,
     sourceLanguage,
     targetLanguage,
     displayMode,
@@ -223,6 +255,7 @@ function startTranslationRun(
     forceRefresh,
     observer: null,
     scanTimer: undefined,
+    retryTimer: undefined,
     isProcessing: false,
     hasPendingScan: false,
     translatedIds: new Set(),
@@ -245,8 +278,18 @@ function startTranslationRun(
   activeRun = run;
   installSelectionQuickAction(run);
   if (headerPopupRescan) installHeaderPopupRescan(run);
-  run.observer = observeDynamicContent(sourceTextByElement, () => {
-    if (isActiveRun(run.id)) scheduleScan(run, DYNAMIC_CONTENT_SCAN_DELAY_MS);
+  run.observer = observeDynamicContent(sourceTextByElement, (changedElements) => {
+    if (!isActiveRun(run.id)) return;
+    for (const element of changedElements || []) {
+      const id = idsByElement.get(element);
+      if (!id) continue;
+      // Mutation cleanup has already refreshed the source snapshot. Clear
+      // terminal bookkeeping here so a stable SPA node can translate its new
+      // text even when the prior request failed.
+      run.failedIds.delete(id);
+      run.translatedIds.delete(id);
+    }
+    scheduleScan(run, DYNAMIC_CONTENT_SCAN_DELAY_MS);
   });
   installSpaNavigationReset(run);
   scheduleScan(run, 0);
@@ -267,9 +310,9 @@ function stopActiveRun(): void {
   removeSpaNavigationReset();
   activeRun.observer?.disconnect();
   if (activeRun.scanTimer !== undefined) window.clearTimeout(activeRun.scanTimer);
-  // L5: tear down the per-run memory so its L1 WeakMap and L2 Map
-  // are released. The L3 chrome.storage entries persist; the L4
-  // BroadcastChannel listener is detached by `dispose()`.
+  if (activeRun.retryTimer !== undefined) window.clearTimeout(activeRun.retryTimer);
+  sourceTextChangedInScan.clear();
+  // Release page-scoped cached translations when the run ends.
   activeRun.memory?.dispose();
   activeRun.memory = null;
   activeRun = null;
@@ -292,21 +335,53 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
   try {
     while (isActiveRun(run.id) && run.hasPendingScan) {
       run.hasPendingScan = false;
+      const viewGeneration = run.viewGeneration;
       const loadedCandidates = collectCandidates();
+      // A reused SPA node may not emit a mutation before a visibility or
+      // pageshow scan. `getSourceText` records such changes; clear the old
+      // owned output before accepting the new snapshot, otherwise the stable
+      // element id can make the previous route's translation look current.
+      loadedCandidates.forEach(({ element }) => {
+        if (sourceTextChangedInScan.has(element)) {
+          clearCandidateForCurrentScan(element, run);
+        } else if (sourceTextByElement.get(element) === undefined) {
+          sourceTextByElement.set(element, readTextWithoutTranslations(element));
+        }
+      });
+      sourceTextChangedInScan.clear();
+      // Candidate eligibility can change without changing source text. For
+      // example, a framework may add `hidden`, `aria-hidden`, `role="button"`,
+      // or an excluded ancestor class to an already translated node. Remove
+      // only stale managed owners before reconciliation so the next scan can
+      // safely re-admit the node if the page makes it readable again.
+      const eligibleElements = new Set(loadedCandidates.map(({ element }) => element));
+      const ineligibleElements = clearIneligibleManagedSources(
+        document,
+        eligibleElements,
+        sourceTextByElement,
+      );
+      for (const element of ineligibleElements) {
+        const id = element.getAttribute(SOURCE_BLOCK_ID_ATTRIBUTE);
+        if (!id) continue;
+        run.failedIds.delete(id);
+        run.translatedIds.delete(id);
+      }
       loadedCandidates.forEach(({ id }) => run.seenIds.add(id));
+      const renderedByElement = new Map<HTMLElement, HTMLElement | null>();
       for (const { id, element } of loadedCandidates) {
-        const existing = element.querySelector<HTMLElement>(`:scope > .${TRANSLATION_CLASS}`);
+        const existing = reconcileRenderedTranslation(element, id);
+        renderedByElement.set(element, existing);
         if (existing?.lang === run.targetLanguage) run.translatedIds.add(id);
       }
       const candidates = loadedCandidates.filter(({ id, element }) => {
         if (run.failedIds.has(id)) return false;
-        const existing = element.querySelector<HTMLElement>(`:scope > .${TRANSLATION_CLASS}`);
+        const existing = renderedByElement.get(element);
         return !existing || existing.lang !== run.targetLanguage;
       });
 
       if (candidates.length === 0) {
         if (run.translatedIds.size === 0) {
-          updatePageStatus(t('translator.status.empty'), 'empty');
+          updatePageStatus(t('translator.status.noContent'), 'empty');
         } else {
           updatePageStatus(
             `当前已加载内容已翻译，共 ${run.translatedIds.size} 段；继续监听滚动加载的新内容`,
@@ -317,11 +392,8 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
       }
 
       candidates.sort(compareCandidatePriority);
-      // L5: split candidates into memory hits (rendered directly from
-      // cache) and cache misses (sent to the model). The cache lookup
-      // is async because L3 reads from chrome.storage; we parallelise
-      // the lookups with Promise.all so the wall-clock cost is one
-      // microtask, not N.
+      // Split page-run memory hits from misses. Persistent and cross-tab
+      // cache lookup remains inside the Service Worker request path.
       let cached: Array<{ candidate: TranslationBlock & { element: HTMLElement }; block: TranslatedBlock }> = [];
       let toTranslate = candidates;
       if (run.memory) {
@@ -344,10 +416,8 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
         toTranslate = [];
         for (const entry of lookups) {
           if (entry.hit) {
-            // TranslationMemory deliberately caches the provider response as
-            // received, including its original block id. The renderer joins
-            // by the current candidate id, so rebind only the cached result
-            // (never the DOM node) before rendering this real occurrence.
+            // The renderer joins by current DOM ID, so rebind only the
+            // cached result and still render every real DOM occurrence.
             cached.push({
               candidate: entry.candidate,
               block: bindCachedTranslation(entry.hit, entry.candidate.id),
@@ -357,11 +427,30 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
           }
         }
       }
+      // Cache lookups can yield while the page changes eligibility. Filter
+      // both cache hits and provider misses against a fresh candidate set
+      // before rendering or sending any text to the Provider; otherwise a
+      // node that just became hidden/interactive could still be submitted in
+      // the same scan.
+      if (cached.length > 0 || toTranslate.length > 0) {
+        const currentCandidatesByElement = getCurrentCandidatesByElement();
+        const isCurrentCandidate = (candidate: TranslationBlock & { element: HTMLElement }): boolean =>
+          isCurrentCandidateSnapshot(candidate, currentCandidatesByElement)
+            && isCurrentSourceText(candidate.element, candidate.text);
+        const currentCached = cached.filter(({ candidate }) => isCurrentCandidate(candidate));
+        const currentToTranslate = toTranslate.filter(isCurrentCandidate);
+        if (currentCached.length !== cached.length || currentToTranslate.length !== toTranslate.length) {
+          scheduleScan(run, 0);
+        }
+        cached = currentCached;
+        toTranslate = currentToTranslate;
+      }
       // Render cache hits immediately so the user sees the first
       // paint before the model request starts. This also covers the
       // case where the model call is slow or fails — cached blocks
       // remain on the page regardless.
       if (cached.length > 0) {
+        if (!isCurrentRunView(run, viewGeneration)) return;
         try {
           renderTranslations(
             cached.map((entry) => entry.candidate),
@@ -385,11 +474,13 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
       }
       if (toTranslate.length === 0) continue;
       try {
-        const freshBlocks = await translateCandidatesAndCollect(toTranslate, run);
-        // L5: persist model answers for the next scan / next run.
+        const freshBlocks = await translateCandidatesAndCollect(toTranslate, run, viewGeneration);
+        if (!isCurrentRunView(run, viewGeneration)) return;
+        // Keep model answers only for the remainder of this page run.
         if (run.memory) {
-          for (const [index, block] of freshBlocks.entries()) {
-            const candidate = toTranslate[index];
+          const candidatesById = new Map(toTranslate.map((candidate) => [candidate.id, candidate]));
+          for (const block of freshBlocks) {
+            const candidate = candidatesById.get(block.id);
             if (!candidate) continue;
             await run.memory.put(
               candidate.text,
@@ -401,6 +492,17 @@ async function processLoadedContent(run: TranslationRun): Promise<void> {
           }
         }
       } catch (error) {
+        // A navigation can race a rejected request. Once the generation has
+        // advanced, this response belongs to the old view and must not write
+        // its ids into the new view's terminal failure set.
+        if (!isCurrentRunView(run, viewGeneration)) return;
+        if (isRetryableTranslationError(error)) {
+          // bfcache/page freeze disconnects are expected lifecycle events, not
+          // provider failures. Leave ids eligible for the next visible scan.
+          requeueAfterLifecycleDisconnect(run.failedIds, toTranslate.map(({ id }) => id));
+          scheduleLifecycleRetry(run);
+          return;
+        }
         run.failedBatchCount += 1;
         toTranslate.forEach(({ id }) => run.failedIds.add(id));
         if (isActiveRun(run.id)) {
@@ -418,19 +520,19 @@ async function translateCandidates(
   candidates: Array<TranslationBlock & { element: HTMLElement }>,
   run: TranslationRun,
 ): Promise<void> {
-  await translateCandidatesAndCollect(candidates, run);
+  await translateCandidatesAndCollect(candidates, run, run.viewGeneration);
 }
 
 /**
- * L5 wiring: variant of `translateCandidates` that returns the
- * fresh model outputs in input order, so the caller can persist them
- * into the `TranslationMemory`. The visible behaviour (status text,
- * cost recording, cache hit count) is identical to
+ * Returns fresh model outputs in input order so the caller can retain them
+ * in per-page memory. The visible behaviour (status text, cost recording,
+ * cache hit count) is identical to
  * `translateCandidates`; the only difference is the return value.
  */
 async function translateCandidatesAndCollect(
   candidates: Array<TranslationBlock & { element: HTMLElement }>,
   run: TranslationRun,
+  viewGeneration: number = run.viewGeneration,
 ): Promise<TranslatedBlock[]> {
   const { targetLanguage } = run;
   const styledCandidates = candidates.map((candidate) => ({
@@ -447,7 +549,7 @@ async function translateCandidatesAndCollect(
     batches.map((blocks) => requestTranslationEstimate(blocks, targetLanguage, run.forceRefresh)),
   ).catch(() => []);
   const initialEstimate = summarizePageEstimates([], candidates.length);
-  updatePageStatus(t('translator.status.preparing'), 'progress');
+  updatePageStatus(t('translator.status.preparingFirst'), 'progress');
 
   let recordedAmount = 0;
   let latestTodayAmount = initialEstimate.todayTotalCost;
@@ -456,23 +558,54 @@ async function translateCandidatesAndCollect(
   let cacheHitCount = 0;
   let isCacheAvailable = initialEstimate.isCacheAvailable;
 
-  // The flat list of model outputs in input order. The order matches
-  // `candidates` (the batch creator preserves block ordering) so the
-  // caller can pair them up for `memory.put`.
-  const allFreshBlocks: TranslatedBlock[] = [];
-  let blockCursor = 0;
+  // Keep model outputs keyed by their validated block id. Providers and the
+  // cache service normally preserve request order, but that is not a safe
+  // contract to rely on when a stream interleaves blocks or a future adapter
+  // changes its merge order.
+  const freshBlocksById = new Map<string, TranslatedBlock>();
+  const getFreshBlocks = (): TranslatedBlock[] => candidates
+    .map((candidate) => freshBlocksById.get(candidate.id))
+    .filter((block): block is TranslatedBlock => block !== undefined);
 
   for (const [batchIndex, blocks] of batches.entries()) {
-    if (!isActiveRun(run.id)) {
-      return allFreshBlocks;
+    if (!isCurrentRunView(run, viewGeneration)) {
+      return getFreshBlocks();
     }
 
     updatePageStatus(`正在翻译第 ${batchIndex + 1}/${batches.length} 批（共 ${candidates.length} 段）…`, 'progress');
 
-    const response = await streamBatch({ sourceLanguage: run.sourceLanguage, targetLanguage, forceRefresh: run.forceRefresh, blocks }, styledCandidates, run);
+    let response: TranslationBatchResponse;
+    try {
+      response = await streamBatch(
+        { sourceLanguage: run.sourceLanguage, targetLanguage, forceRefresh: run.forceRefresh, blocks },
+        styledCandidates,
+        run,
+      );
+    } catch (error) {
+      // Navigation intentionally disconnects in-flight ports. Treat that
+      // cancellation as stale work rather than marking the new view's ids as
+      // failed and suppressing their next translation attempt.
+      if (!isCurrentRunView(run, viewGeneration)) return getFreshBlocks();
+      throw error;
+    }
 
-    if (!isActiveRun(run.id)) {
-      return allFreshBlocks;
+    if (!isCurrentRunView(run, viewGeneration)) {
+      return getFreshBlocks();
+    }
+    const currentCandidatesByElement = getCurrentCandidatesByElement();
+    const currentBatch = blocks.filter((block) => {
+      const candidate = styledCandidates.find((entry) => entry.id === block.id);
+      return candidate
+        ? isCurrentCandidateSnapshot(candidate, currentCandidatesByElement)
+          && isCurrentSourceText(candidate.element, candidate.text)
+        : false;
+    });
+    if (currentBatch.length !== blocks.length) {
+      // The page changed while this batch was in flight or between batches.
+      // Never commit a response against a stale source snapshot; a scheduled
+      // reconciliation scan will clear the old output and retry the new text.
+      scheduleScan(run, 0);
+      return getFreshBlocks();
     }
     // Reconcile the complete batch after the stream closes. This is idempotent
     // and covers providers that emit a validated envelope only at completion.
@@ -488,20 +621,7 @@ async function translateCandidatesAndCollect(
     cacheHitCount += response.cache.hitCount;
     isCacheAvailable &&= response.cache.isAvailable;
     response.blocks.forEach(({ id }) => run.translatedIds.add(id));
-    // Append the batch's blocks to the flat list in input order. The
-    // stream may interleave block ids; we trust the `streamBatch`
-    // contract that the response.blocks array is in the same order
-    // as the input `blocks` for the same batch.
-    for (let i = 0; i < response.blocks.length; i += 1) {
-      const block = response.blocks[i];
-      const candidate = candidates[blockCursor + i];
-      if (block && candidate) {
-        allFreshBlocks.push(block);
-      } else if (block) {
-        allFreshBlocks.push(block);
-      }
-    }
-    blockCursor += response.blocks.length;
+    response.blocks.forEach((block) => freshBlocksById.set(block.id, block));
   }
 
   const estimate = summarizePageEstimates(await estimatesPromise, candidates.length);
@@ -524,7 +644,7 @@ async function translateCandidatesAndCollect(
       : `已翻译当前加载内容，共处理 ${run.translatedIds.size} 段${cacheMessage}${costMessage}${thresholdMessage}${ledgerMessage}${cacheWarning}；继续监听滚动加载的新内容`,
     hasPendingContent ? 'progress' : 'complete',
   );
-  return allFreshBlocks;
+  return getFreshBlocks();
 }
 
 async function streamBatch(
@@ -533,8 +653,21 @@ async function streamBatch(
   run: TranslationRun,
   onBlock?: (block: import('@/src/core/contracts').TranslatedBlock) => void,
 ): Promise<TranslationBatchResponse> {
-  const port = browser.runtime.connect({ name: 'textduet-translation-stream' });
+  // Connecting can throw synchronously when the page is entering bfcache or
+  // the extension context is being torn down. Normalize that lifecycle
+  // failure before the scan loop can classify the batch as a provider error.
+  let port: Browser.runtime.Port;
+  try {
+    port = browser.runtime.connect({ name: 'textduet-translation-stream' });
+  } catch (error) {
+    throw normalizeTranslationStreamSendError(error);
+  }
   activeStreamPorts.add(port);
+  // Capture the view generation at request creation. A SPA navigation can
+  // leave the run itself active while replacing the DOM; a late completion
+  // from the old view must therefore be treated as stale even when run.id
+  // still matches.
+  const viewGeneration = run.viewGeneration;
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (callback: () => void) => {
@@ -548,17 +681,15 @@ async function streamBatch(
       try {
         const event = parseTranslationStreamEvent(rawEvent);
         if (event.type === 'TRANSLATION_BLOCK') {
-          run.translatedIds.add(event.block.id);
-          if (onBlock) onBlock(event.block);
-          else renderTranslations(styledCandidates, [event.block], run.targetLanguage);
+          // Older workers may still send block events. Buffer them and wait
+          // for the complete envelope so a later stream error cannot leave a
+          // partial translation in the page.
           return;
         }
         if (event.type === 'TRANSLATION_COMPLETE') {
-          // Some compatible endpoints buffer the JSON envelope until the
-          // final SSE event. Render any blocks not emitted incrementally so a
-          // completed batch can never finish with an empty page region.
-          if (!onBlock) {
-            renderTranslations(styledCandidates, event.response.blocks, run.targetLanguage);
+          if (isCurrentRunView(run, viewGeneration)) {
+            event.response.blocks.forEach(({ id }) => run.translatedIds.add(id));
+            if (onBlock) event.response.blocks.forEach(onBlock);
           }
           finish(() => resolve(event.response));
           return;
@@ -570,9 +701,20 @@ async function streamBatch(
     });
     port.onDisconnect.addListener(() => {
       activeStreamPorts.delete(port);
-      if (!settled) { settled = true; reject(new Error('流式翻译连接已断开')); }
+      if (!settled) {
+        settled = true;
+        reject(new TranslationLifecycleDisconnectError());
+      }
     });
-    port.postMessage({ type: 'TRANSLATE_BATCH_STREAM', request });
+    try {
+      port.postMessage({ type: 'TRANSLATE_BATCH_STREAM', request });
+    } catch (error) {
+      // `postMessage` can throw synchronously when the tab enters bfcache or
+      // navigates between connect() and the first send. Use the same cleanup
+      // path as asynchronous stream errors so the port cannot remain in the
+      // active set and suppress later cancellation.
+      finish(() => reject(normalizeTranslationStreamSendError(error)));
+    }
   });
 }
 
@@ -603,6 +745,25 @@ function collectCandidates(): Array<TranslationBlock & { element: HTMLElement }>
   });
 }
 
+/**
+ * Re-reads the candidate set immediately before committing asynchronous work.
+ * Text equality alone is insufficient: a page can add `hidden`, an
+ * interactive role, or an excluded ancestor while a Provider/cache request is
+ * in flight. Such a node must not receive the late response after the scan
+ * has removed its previous translation.
+ */
+function getCurrentCandidatesByElement(): Map<HTMLElement, TranslationBlock & { element: HTMLElement }> {
+  return new Map(collectCandidates().map((candidate) => [candidate.element, candidate]));
+}
+
+function isCurrentCandidateSnapshot(
+  candidate: TranslationBlock & { element: HTMLElement },
+  currentCandidatesByElement: ReadonlyMap<HTMLElement, TranslationBlock & { element: HTMLElement }>,
+): boolean {
+  const current = currentCandidatesByElement.get(candidate.element);
+  return current?.id === candidate.id && current.text === candidate.text;
+}
+
 function compareCandidatePriority(
   left: TranslationBlock & { element: HTMLElement },
   right: TranslationBlock & { element: HTMLElement },
@@ -628,26 +789,53 @@ function getElementId(element: HTMLElement): string {
 }
 
 function getSourceText(element: HTMLElement): string {
+  const text = readTextWithoutTranslations(element);
   const existingText = sourceTextByElement.get(element);
-  if (existingText !== undefined) {
-    return existingText;
+  if (existingText === undefined) {
+    sourceTextByElement.set(element, text);
+  } else if (existingText !== text) {
+    // Keep the old snapshot until processLoadedContent calls clearCandidate;
+    // that operation removes only our owned translation and then commits the
+    // new snapshot atomically.
+    sourceTextChangedInScan.add(element);
   }
-
-  const text = element.innerText;
-  sourceTextByElement.set(element, text);
   return text;
+}
+
+function clearCandidateForCurrentScan(element: HTMLElement, run: TranslationRun): void {
+  const id = idsByElement.get(element);
+  // Element IDs are intentionally stable across SPA rerenders, so a changed
+  // text snapshot must also invalidate terminal failure/success bookkeeping.
+  // Otherwise a provider failure for the previous route can permanently
+  // suppress the replacement text on the same DOM node.
+  if (id) {
+    run.failedIds.delete(id);
+    run.translatedIds.delete(id);
+  }
+  clearCandidate(element, sourceTextByElement);
+}
+
+function scheduleLifecycleRetry(run: TranslationRun): void {
+  if (!isActiveRun(run.id) || run.retryTimer !== undefined) return;
+  run.retryTimer = window.setTimeout(() => {
+    run.retryTimer = undefined;
+    if (isActiveRun(run.id)) scheduleScan(run, 0);
+  }, 500);
 }
 
 function isActiveRun(runId: number): boolean {
   return activeRunId === runId && activeRun?.id === runId;
 }
 
+function isCurrentRunView(run: TranslationRun, viewGeneration: number): boolean {
+  return isActiveRun(run.id)
+    && isCurrentView(activeRunId, run.id, run.viewGeneration, viewGeneration);
+}
+
 /**
- * L5: construct a fresh `TranslationMemory` for a new run. The
- * `chrome.storage.local` and `BroadcastChannel` integrations are
- * best-effort: if either API is unavailable (private windows,
- * non-Chromium test env) the memory falls back to the L1 / L2
- * in-process tiers only.
+ * Construct a fresh, page-scoped memory. It deliberately has no Storage or
+ * BroadcastChannel integration so the Translator remains a low-privilege
+ * DOM-only context.
  */
 function createRunMemory(): TranslationMemory | null {
   try {
@@ -674,24 +862,83 @@ async function translateSelection(text: string, sourceLanguage: string, targetLa
     return;
   }
   const block = { id: `textduet-selection-${Date.now()}`, text: selectedText };
+  const selectionRun = activeRun || createSelectionRun(targetLanguage);
+  const requestViewGeneration = selectionRun.viewGeneration;
+  const requestRun = activeRun;
+  const requestAnchor = anchorElement;
+  const requestText = selectedText;
+  const requestSelectionRevision = captured?.revision ?? 0;
+  const requestHref = window.location.href;
   try {
     const response = await streamBatch(
       { sourceLanguage, targetLanguage, forceRefresh: false, blocks: [block] },
       [],
-      activeRun || createSelectionRun(targetLanguage),
-      (blockResult) => renderSelectionTranslation(text, blockResult, targetLanguage, translationColor),
+      selectionRun,
     );
-    if (!response.blocks[0]) throw new Error('模型没有返回译文');
+    if (!isCurrentSelectionRequest(requestRun, selectionRun, requestViewGeneration, requestAnchor, requestText, requestSelectionRevision, requestHref)) {
+      return;
+    }
+    // Selection output is committed only after the complete, schema-validated
+    // response arrives. This keeps a late stream error from leaving partial
+    // content in the page.
+    const translated = response.blocks[0];
+    if (!translated) throw new Error('模型没有返回译文');
+    renderSelectionTranslation(text, translated, targetLanguage, translationColor);
   } catch (error) {
-    renderSelectionError(normalizeSelectionError(error));
+    if (!isCurrentSelectionRequest(requestRun, selectionRun, requestViewGeneration, requestAnchor, requestText, requestSelectionRevision, requestHref)) {
+      return;
+    }
+    renderSelectionError(normalizeSelectionError(error, t));
   }
+}
+
+function isCurrentSelectionRequest(
+  requestRun: TranslationRun | null,
+  selectionRun: TranslationRun,
+  requestViewGeneration: number,
+  anchor: HTMLElement,
+  text: string,
+  selectionRevision: number,
+  href: string,
+): boolean {
+  const captured = getCapturedSelection();
+  if (window.location.href !== href
+    || !captured
+    || captured.anchor !== anchor
+    || captured.text !== text
+    || captured.revision !== selectionRevision
+    || !isConnectedElement(anchor)) {
+    return false;
+  }
+
+  // Opening a context menu can clear the live Selection object. The captured
+  // snapshot remains authoritative in that case, but a new non-empty live
+  // selection must invalidate the in-flight request.
+  const liveText = normalizeSelectionText(window.getSelection()?.toString() || '');
+  if (liveText && liveText !== text) return false;
+
+  if (requestRun === null) {
+    // A synthetic selection run has no page lifecycle of its own. If a page
+    // translation starts while it is in flight, its result belongs to the old
+    // context and must be dropped.
+    return activeRun === null && selectionRun.id === 0;
+  }
+  return activeRun === requestRun
+    && isCurrentRunView(requestRun, requestViewGeneration);
+}
+
+function isConnectedElement(element: HTMLElement): boolean {
+  const connected = (element as HTMLElement & { isConnected?: boolean }).isConnected;
+  if (connected !== undefined) return connected;
+  const documentElement = element.ownerDocument?.documentElement;
+  return Boolean(documentElement?.contains(element));
 }
 
 function createSelectionRun(targetLanguage: string): TranslationRun {
   return {
-    id: 0, sourceLanguage: 'auto', targetLanguage, displayMode: 'bilingual',
+    id: 0, viewGeneration: 0, sourceLanguage: 'auto', targetLanguage, displayMode: 'bilingual',
     translationColor: DEFAULT_TRANSLATION_COLOR, selectionQuickAction: false, headerPopupRescan: false, forceRefresh: false, observer: null,
-    scanTimer: undefined, isProcessing: false, hasPendingScan: false,
+    scanTimer: undefined, retryTimer: undefined, isProcessing: false, hasPendingScan: false,
     translatedIds: new Set(), failedIds: new Set(), seenIds: new Set(), failedBatchCount: 0,
     // Selection runs are short-lived and use the element directly; the
     // per-run memory would be torn down by the same lifecycle so we
@@ -763,7 +1010,7 @@ function updateSelectionQuickAction(run: TranslationRun): void {
   if (!selectionQuickActionButton) {
     selectionQuickActionButton = document.createElement('button');
     selectionQuickActionButton.type = 'button';
-    selectionQuickActionButton.className = 'textduet-selection-quick-action';
+    selectionQuickActionButton.className = SELECTION_QUICK_ACTION_CLASS;
     selectionQuickActionButton.setAttribute('aria-label', '翻译选中文本');
     selectionQuickActionButton.title = '翻译选中文本';
     selectionQuickActionButton.textContent = '文A';
@@ -846,15 +1093,6 @@ function parseRuntimeMessageSafely(value: unknown): RuntimeMessage | null {
   }
 }
 
-function normalizeSelectionError(error: unknown): string {
-  const message = error instanceof Error ? error.message : '';
-  if (/api key|密钥|认证/i.test(message)) return '请先配置 API Key';
-  if (/过长|4000|长度/i.test(message)) return '选区过长';
-  if (/格式|json|段落/i.test(message)) return '模型返回格式无效';
-  if (/余额|限流|不可用/i.test(message)) return message.slice(0, 80);
-  return '选区翻译失败';
-}
-
 // ---- Header popup rescan ----
 //
 // Some sites (GitHub, Stack Overflow, etc.) render user-triggered
@@ -871,6 +1109,16 @@ function normalizeSelectionError(error: unknown): string {
 
 const HEADER_POPUP_RESCAN_DELAY_MS = 300;
 let headerPopupRescanCleanup: (() => void) | null = null;
+
+// Leading-edge throttle for visibility-driven rescans. macOS fires
+// visibilitychange on every window-occlusion / fullscreen toggle
+// (switching apps, Mission Control, devtools focus), so without a
+// throttle the user can trigger several scans inside a single tick.
+// 250ms is short enough that the user still sees a scan complete in
+// the same paint frame as the tab returning to the foreground, while
+// long enough to coalesce the back-to-back visibility events the OS
+// emits when the user briefly visits another app and returns.
+const VISIBILITY_RESCAN_THROTTLE_MS = 250;
 
 function installHeaderPopupRescan(run: TranslationRun): void {
   removeHeaderPopupRescan();
@@ -919,10 +1167,26 @@ function installSpaNavigationReset(run: TranslationRun): void {
   if (typeof window === 'undefined') return;
   const onNavigate = (): void => {
     if (!isActiveRun(run.id)) return;
-    // Cancel any in-flight `scheduler.postTask` triggered by the
-    // observer (Layer 4) so the heavy work from the old view does
-    // not race the new scan.
-    run.observer?.abort();
+    run.viewGeneration = advanceViewGeneration(
+      run.viewGeneration,
+      run.failedIds,
+      run.translatedIds,
+    );
+    // A response that is already in flight belongs to the old view. Closing
+    // its ports both saves work and makes the stale-view boundary explicit;
+    // the generation check below remains the correctness guard if a provider
+    // resolves concurrently with this disconnect.
+    activeStreamPorts.forEach((port) => {
+      try { port.disconnect(); } catch { /* already disconnected */ }
+    });
+    activeStreamPorts.clear();
+    // NOTE: deliberately NOT calling `run.observer?.abort()` here. The
+    // observer's AbortController is shared by every future mutation
+    // callback, so a single abort() permanently killed dynamic-content
+    // observation for the rest of the run - infinite scroll / new
+    // content on the post-navigation view never translated. The pending
+    // debounced scan is idempotent and simply merges with the scan
+    // scheduled below.
     // Drop every previous translation so the shared layout does not
     // accumulate duplicates across route changes.
     removeRenderedTranslations();
@@ -949,19 +1213,65 @@ function installSpaNavigationReset(run: TranslationRun): void {
   };
   const onPopState = (): void => throttledOnNavigate();
   const onHashChange = (): void => throttledOnNavigate();
-  // Tab visibility. SPA frameworks often re-evaluate animations or
-  // background workers when the user returns to a tab, which can
-  // produce child mutations that the MutationObserver happily turns
-  // into duplicate translations if the dedup cache is still warm.
-  // Forcing a full cleanup + re-scan on `visible` keeps the rendered
-  // page consistent with the rest of the lifecycle.
+  // Tab visibility: reconcile, never wipe. TD-2026-028: the previous
+  // full reset (removeRenderedTranslations + re-scan) destroyed and
+  // re-inserted every translation region each time the tab became
+  // visible again - on macOS, switching between the browser and other
+  // apps fires visibilitychange (window occlusion / fullscreen), so
+  // users saw translation regions repeatedly re-inserted plus a flash
+  // of the untranslated page. A scan alone reconciles: elements whose
+  // translation is already rendered (same text, same target language)
+  // are skipped by `processLoadedContent`; only genuinely new or
+  // changed content gets translated.
+  //
+  // TD-2026-029: the same scan is now also throttled with a leading
+  // edge so a flurry of visibility changes (window occlusion,
+  // fullscreen toggles, devtools focus) inside the same tick collapse
+  // into one scan. Without the throttle each visible→hidden→visible
+  // cycle re-queued a scan; the queued scan still produced no
+  // duplicates on its own, but it ran repeatedly enough that a SPA
+  // that re-rendered on focus ended up with each translation region
+  // re-inserted by a follow-up render pass.
+  const throttledOnVisibilityChange = createLeadingThrottle(
+    VISIBILITY_RESCAN_THROTTLE_MS,
+    () => {
+      if (isActiveRun(run.id)) {
+        scheduleScan(run, DYNAMIC_CONTENT_SCAN_DELAY_MS);
+      }
+    },
+  );
   const onVisibilityChange = (): void => {
-    if (typeof document === 'undefined') return;
-    if (document.visibilityState === 'visible') throttledOnNavigate();
+    // Do the visibility predicate before the leading-edge throttle. Otherwise
+    // a hidden event can consume the 250 ms window and suppress the visible
+    // event immediately following it, leaving new background-loaded content
+    // unscanned.
+    if (document.visibilityState !== 'visible') return;
+    throttledOnVisibilityChange();
+  };
+  const onPageHide = (): void => {
+    if (!isActiveRun(run.id)) return;
+    run.viewGeneration = advanceViewGeneration(
+      run.viewGeneration,
+      run.failedIds,
+      run.translatedIds,
+    );
+    activeStreamPorts.forEach((port) => {
+      try { port.disconnect(); } catch { /* already disconnected */ }
+    });
+    activeStreamPorts.clear();
+  };
+  const onPageShow = (): void => {
+    if (!isActiveRun(run.id)) return;
+    // A pageshow after bfcache can reuse the same DOM nodes. The next scan
+    // refreshes source snapshots and retries any lifecycle-disconnected batch.
+    run.hasPendingScan = true;
+    scheduleScan(run, 0);
   };
   window.addEventListener('popstate', onPopState);
   window.addEventListener('hashchange', onHashChange);
   document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('pageshow', onPageShow);
 
   // View Transitions API (Chrome 111+, optional). The browser fires
   // `viewtransitionstart` when a programmatic `document.startViewTransition`
@@ -989,6 +1299,8 @@ function installSpaNavigationReset(run: TranslationRun): void {
     document.removeEventListener('viewtransitionstart', onViewTransitionStart);
     document.removeEventListener('astro:before-swap', onAstroBeforeSwap);
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('pageshow', onPageShow);
   };
 }
 

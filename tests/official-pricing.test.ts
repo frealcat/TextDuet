@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchOfficialModelPricing } from '@/src/providers/official-pricing';
+import {
+  fetchOfficialModelPricing,
+  MAX_OFFICIAL_PRICING_RESPONSE_BYTES,
+} from '@/src/providers/official-pricing';
 
 describe('official model pricing', () => {
   it('maps exact OpenRouter model pricing from USD per token to USD per million tokens', async () => {
@@ -69,6 +72,17 @@ describe('official model pricing', () => {
       'https://openrouter.ai/api/v1',
       'model',
       vi.fn().mockResolvedValue(new Response('private body', { status: 403 })),
+    )).resolves.toEqual({ status: 'unavailable' });
+  });
+
+  it('returns unavailable when the catalogue response exceeds the byte ceiling', async () => {
+    await expect(fetchOfficialModelPricing(
+      'https://openrouter.ai/api/v1',
+      'model',
+      vi.fn().mockResolvedValue(new Response(
+        new Uint8Array(MAX_OFFICIAL_PRICING_RESPONSE_BYTES + 1),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )),
     )).resolves.toEqual({ status: 'unavailable' });
   });
 });

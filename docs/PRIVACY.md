@@ -1,45 +1,177 @@
-# TextDuet 隐私政策
+# TextDuet Privacy Policy
 
-> 更新日期：2026-08-24
+[中文](./PRIVACY.zh-CN.md)
+
+> Last updated: 2026-08-28
 >
-> 适用版本：`0.1.0` 本地安装版（仅 Chrome 开发者模式本地加载）
+> Applies to the TextDuet `0.2.0` release candidate and the matching Chrome
+> Web Store, GitHub Release, and source-built packages when they are published.
 
-TextDuet 是本地优先、用户自带 API Key 的 Chrome 网页翻译扩展。项目不运营翻译中转服务器，不提供账号系统，也不收集遥测。
+TextDuet is a local-first Chrome extension for reading webpages in two
+languages. It uses a provider that you choose and an API key that you provide.
+TextDuet does not operate a translation proxy, account service, telemetry
+service, cloud sync, or automatic issue-upload service.
 
-## 处理的数据
+## Short Version
 
-用户主动在当前标签页启动翻译后，扩展会提取当前已加载、可见且符合规则的阅读文本，并把必要文本、目标语言和翻译指令直接发送到用户配置的模型 API。为判断译文颜色可读性，同一批次还可能包含标准化原文字体色、有效背景色、用户偏好色和本地计算的对比度；不包含 DOM、选择器、样式表、URL 或截图。运行期间新加载的可见正文也可能被发送，直到用户停止翻译或页面会话结束。
+When you explicitly start a translation, eligible visible webpage text is sent
+directly from Chrome to the model provider configured in TextDuet. No
+TextDuet-operated server or project operator receives or relays that text.
+Your provider may retain the request,
+charge for it, or process it under its own terms. Review those terms before
+translating confidential, personal, or regulated material.
 
-API Key、模型配置、价格配置、预算、用量摘要和翻译缓存存放在浏览器扩展的本地存储中。API Key 默认只保存到当前浏览器会话；只有用户主动选择时才持久保存到本机。浏览器扩展存储不等同于操作系统级加密保险箱。
+## Data TextDuet Processes
 
-本地用量账本记录日期、Provider、模型、Provider 响应返回的实际 token 数、币种和本地预算计算所需金额字段；翻译缓存记录文本内容寻址摘要、译文和必要的语言/模型元数据。账本不记录网页正文、URL 或 API Key。
+### Webpage content
 
-用户可在 Options 中为最近一次启动翻译的页面生成兼容性诊断预览。诊断默认只包含脱敏主机名、扩展/Chrome 版本和计数；只有用户明确勾选时才加入去除查询参数与片段的 pathname。诊断包不会包含正文、表单内容、API Key、认证头或截图，不会自动上传；用户主动下载后由用户自行决定是否保存或提交给维护者。
+After a user action, the Translator Script identifies visible, eligible
+reading text in the current HTTP or HTTPS page. The request can include the
+source text, source and target languages, and the translation instructions.
+For readability decisions, a request can also contain normalized source text
+color, effective background color, and the user's local color preference.
+These values are sent directly to the selected provider along with the model
+request. They are not sent to a TextDuet server.
 
-Options 展示的 60 天用量曲线完全从本地账本生成，并按模型分别提供每日序列和汇总，只代表通过 TextDuet 发起、Provider 返回 usage 并成功记录的请求。更早记录会在账本维护时删除。账单界面只展示 token；本地金额字段仅用于用户主动配置的预算提醒，不作为厂商账单展示。
+While a translation is running, newly loaded eligible content can be sent in a
+later batch until the user stops the run, navigates away, or the page session
+ends. Forms, editable fields, hidden content, code, and TextDuet's own nodes
+are excluded by the page extraction rules.
 
-## 不收集的数据
+### Provider configuration and API keys
 
-TextDuet 当前不包含账号、广告、分析 SDK、遥测、云同步或自动问题上传。项目方不会主动获得用户的 API Key、浏览历史、网页正文、译文、表单内容或本地用量记录。
+Provider origin, model names, language preferences, display settings, prices,
+and budget preferences are stored in the extension's local storage. A saved
+raw API key is read only by the Service Worker. A trusted extension page can
+hold a key the user is actively entering long enough to send it in a validated
+message, but it is never given a saved key. A key is never returned in public
+settings, sent to the webpage, or passed to the Translator Script.
 
-## 第三方处理
+TextDuet supports two key lifecycles:
 
-模型服务商会按其自身条款处理用户主动发送的网页文本、提示词和请求元数据。TextDuet 无法控制服务商的留存、训练、地域或计费政策。用户应在配置前阅读所选服务商的隐私政策与数据处理条款，避免翻译机密、私人或受监管内容。
+- **Session-only:** the key is held in restricted `storage.session` and is
+  cleared when the browser session ends.
+- **Local Vault:** when the user explicitly chooses persistence, the key is
+  stored inside a versioned AES-GCM encrypted Vault. The password is never
+  stored. Only derived unlock material is kept in restricted session storage
+  for the current browser session; after a browser restart the Vault is locked
+  and must be unlocked again.
 
-当前仅在用户选择 OpenRouter 时，Options 会通过 Service Worker 请求其公开官方模型列表以查询价格；请求不携带 API Key、配置的模型名称或本地用量，模型匹配在本机完成。其他 Provider 没有已确认的普通 Key 结构化价格接口时不会发起价格查询。
+The Vault can be locked, deleted, or cleared from Options. Older plaintext key
+slots and per-origin key maps are migrated once when they can be encrypted;
+data that cannot be safely migrated is removed and the user is asked to enter
+the key again. Browser extension storage is not an operating-system password
+manager, even when the Vault is enabled.
 
-用户使用 DeepSeek 官方 API 配置并主动点击查询余额时，Service Worker 会把已保存的 DeepSeek API Key 发送到官方 `/user/balance` 接口。返回的充值余额、赠送余额和可用状态只在当前 Options 页面展示，不写入本地存储，不用于推算 token。自定义兼容端点不能使用此余额查询。
+### Local translation cache
 
-## 用户控制
+The optional persistent translation cache is managed by the Service Worker. In
+the `0.2.0` release line it is encrypted with the same local Vault and is
+available only while the Vault is unlocked. The cache uses content-addressed
+records containing a digest, translated text, language/provider/model context,
+and timestamps; it does not store an API key or URL. It is limited to 30 days
+and 50 MiB, with expiry and least-recently-used cleanup. Users can clear the
+cache from Options.
 
-- 用户决定何时启动和停止当前页面翻译。
-- Provider API Origin 由 Chrome 在用户操作时单独授权。
-- 用户可选择会话级或本机持久化 API Key。
-- 用户可清除本地用量账本和翻译缓存。
-- 卸载扩展会按 Chrome 的行为移除扩展本地数据；服务商已接收的数据需按其政策处理。
+When the Vault is locked, persistent cache lookups and writes are disabled. A
+current page may still reuse translations held only in that page's memory for
+the current run. A cache hit avoids a provider request and does not add a new
+usage-ledger entry.
 
-## 安全边界
+### Usage ledger and diagnostics
 
-API Key 只由扩展的可信上下文读取，不发送到网页 DOM 或 Translator Script。模型输出按不可信数据校验并仅以文本节点渲染。模型对颜色只能返回 `preferred` 或 `source`，本地对比度算法会拒绝不合格建议，模型无法注入颜色值或 CSS。任何软件都无法承诺绝对安全；发现问题请通过项目 GitHub 仓库公开披露流程联系维护者，提交前删除 Key、私人 URL 和网页内容。
+The local usage ledger records the local date, provider, model, provider-
+returned input/output token counts, currency, and fields needed for a local
+budget reminder. It is retained for the documented rolling history (currently
+60 local days) and does not contain page text, URLs, API keys, or request
+bodies. Amounts shown for budgets are local estimates, not a provider invoice.
 
-本地安装候选已与最终构建逐项复核。Chrome Web Store 或其他公开商店分发不在 `0.1.0` 范围；未来若立项，需补充正式联系渠道、公开隐私政策 URL 和对应商店的数据披露。
+Options can generate a compatibility diagnostic preview locally. By default it
+contains only a redacted hostname, extension/Chrome versions, standardized
+status codes, and counts. A page path is excluded unless the user checks a
+separate consent control; query parameters and fragments are removed. The
+diagnostic is previewed and downloaded by the user and is not uploaded
+automatically. It must be reviewed before being attached to a public report.
+
+## Data TextDuet Does Not Collect
+
+TextDuet currently has no:
+
+- account registration, advertising, analytics SDK, telemetry, or cloud sync;
+- project-operated translation backend or automatic browsing-history upload;
+- automatic issue, screenshot, diagnostic, or page-content upload; or
+- project access to a user's API key, provider account, webpage history, form
+  values, or translated pages after the direct provider request.
+
+Chrome and the selected provider may process data under their own policies.
+Uninstalling TextDuet asks Chrome to remove extension storage according to
+Chrome's behavior; data already received by a provider is governed by that
+provider.
+
+## Third-Party Provider Processing
+
+The selected provider receives the text and request metadata needed to produce
+the translation. TextDuet cannot control the provider's retention, training,
+geographic processing, availability, or billing practices.
+
+Some user-triggered supporting requests are provider-specific:
+
+- **OpenRouter model pricing:** TextDuet may request the public
+  `https://openrouter.ai/api/v1/models` catalog through the Service Worker.
+  This request does not include the user's API key, model name, page text, or
+  local usage history; matching is performed locally.
+- **DeepSeek balance:** when the user has configured the exact official
+  DeepSeek origin and clicks the balance action, the saved DeepSeek API key is
+  sent to the official `/user/balance` endpoint. The returned recharge and
+  gift balances are shown only in the current Options page and are not stored
+  or converted into token usage. Custom endpoints cannot use this action.
+
+These provider calls are not a TextDuet account or billing service. Users are
+responsible for provider terms, credentials, rate limits, and charges.
+
+## User Controls
+
+Users decide when to start and stop a translation, which provider and model to
+use, and whether to grant the configured HTTPS origin permission. Options
+provides controls to:
+
+- keep a key for the current session or use the password-unlocked Vault;
+- lock, delete, or clear the Vault and its encrypted persistent records;
+- clear the persistent translation cache and the local usage ledger; and
+- revoke the provider origin permission through Chrome's extension settings.
+
+Changing display mode, locking the Vault, or clearing local data does not ask a
+provider to delete data it has already received. Contact that provider for
+provider-side deletion or billing questions.
+
+## Security Boundaries
+
+The Service Worker is the only business context that reads secrets and builds
+provider requests. Translator code receives only validated block IDs, source
+text, language settings, and validated translations; it does not access
+Chrome storage. Runtime messages and model responses are schema-checked, and
+translated content is inserted as plain text rather than HTML or executable
+code.
+
+No software can guarantee absolute security. Do not publish a key, password,
+authorization header, private URL, private page text, or sensitive screenshot
+in an issue or discussion. Report suspected vulnerabilities privately through
+[GitHub Private Vulnerability Reporting](https://github.com/frealcat/TextDuet/security/advisories/new)
+or [frealcat@gmail.com](mailto:frealcat@gmail.com).
+
+## Chrome Web Store Disclosure
+
+Webpage content, browsing activity involved in a user-triggered translation,
+and authentication information are user-data categories that must be
+described accurately in the Chrome Web Store listing, even when processing is
+local or sent directly to a user-selected provider. The listing and this
+policy are reviewed together before publication.
+
+Canonical public policy pages:
+
+- English: <https://frealcat.github.io/TextDuet/privacy/>
+- Simplified Chinese: <https://frealcat.github.io/TextDuet/zh-CN/privacy/>
+
+Material changes to data handling will update this policy and the store
+disclosure before the affected build is published. The project contact for
+privacy and security questions is [frealcat@gmail.com](mailto:frealcat@gmail.com).

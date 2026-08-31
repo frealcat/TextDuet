@@ -19,11 +19,39 @@ export type OriginApiKeyMap = Record<string, string>;
 export function normalizeBaseUrlOrigin(baseUrl: string): string | null {
   try {
     const url = new URL(baseUrl);
-    if (url.protocol !== 'https:') return null;
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return null;
     return url.origin;
   } catch {
     return null;
   }
+}
+
+/**
+ * Checks whether a redacted API-key status belongs to the currently edited
+ * Provider origin. The status returned by the Service Worker is scoped to
+ * one origin, so it must not be reused after the Options URL changes.
+ */
+export function isSavedApiKeyForOrigin(
+  hasSavedApiKey: boolean,
+  savedOrigin: string | null,
+  currentBaseUrl: string,
+): boolean {
+  if (!hasSavedApiKey || !savedOrigin) return false;
+  const currentOrigin = normalizeBaseUrlOrigin(currentBaseUrl);
+  return currentOrigin !== null && currentOrigin === savedOrigin;
+}
+
+/**
+ * A key migration is ambiguous when the Provider origin and persistence mode
+ * change in the same save. Callers should persist the origin first, then
+ * perform the mode transition against that now-current origin.
+ */
+export function hasCombinedProviderTransition(
+  previous: { baseUrl: string; apiKeyPersistence: string },
+  next: { baseUrl: string; apiKeyPersistence: string },
+): boolean {
+  return previous.apiKeyPersistence !== next.apiKeyPersistence
+    && normalizeBaseUrlOrigin(previous.baseUrl) !== normalizeBaseUrlOrigin(next.baseUrl);
 }
 
 function trimModelList(models: readonly string[] | undefined): string[] {

@@ -39,7 +39,13 @@ const profileDir = process.env.CHROME_PROFILE || resolve(harnessDir, 'profile');
 let context;
 
 try {
-  await prepareTestExtension(builtExtensionDir, extensionDir, fixtureHostPermission);
+  // The Chroma fixture is served under HTTPS to exercise the matching site
+  // rule. Grant its host in this test-only manifest so chrome.tabs exposes
+  // the URL when the harness resolves the exact target tab.
+  await prepareTestExtension(builtExtensionDir, extensionDir, [
+    fixtureHostPermission,
+    'https://www.trychroma.com/*',
+  ]);
   context = await chromium.launchPersistentContext(profileDir, {
     executablePath: chromeExecutable,
     headless,
@@ -114,7 +120,7 @@ try {
 
     const firstDurationMs = fixture.name === 'article-basic.html'
       ? await runFromPopupAndWaitForCompletion(popupPage, fixturePage)
-      : await runAndWaitForCompletion(worker, popupPage, fixturePage);
+      : await runAndWaitForCompletion(worker, popupPage, fixturePage, 10_000);
     const firstAssessment = await assessFixture(fixturePage);
     assertFixtureAssessment(fixture.name, firstAssessment);
     assert.deepEqual(await snapshotExcludedContent(fixturePage), protectedBefore);
@@ -274,6 +280,13 @@ try {
     performancePage,
     30_000,
   );
+  // Completion is reported after the first visible batch; wait for every
+  // batch before asserting the large-corpus total.
+  await performancePage.waitForFunction(
+    () => document.querySelectorAll('.textduet-translation').length === 1_000,
+    undefined,
+    { timeout: 30_000 },
+  );
   assert.equal(await performancePage.locator('.textduet-translation').count(), 1_000);
   assert(providerRequests.length > 0);
 
@@ -307,12 +320,13 @@ try {
   }
 }
 
-async function prepareTestExtension(sourceDir, targetDir, hostPermission) {
+async function prepareTestExtension(sourceDir, targetDir, hostPermissions) {
   await cp(sourceDir, targetDir, { recursive: true });
   const manifestPath = resolve(targetDir, 'manifest.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const permissions = Array.isArray(hostPermissions) ? hostPermissions : [hostPermissions];
   manifest.host_permissions = [
-    ...new Set([...(manifest.host_permissions || []), hostPermission]),
+    ...new Set([...(manifest.host_permissions || []), ...permissions]),
   ];
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
@@ -323,26 +337,38 @@ async function getServiceWorker(browserContext) {
 }
 
 async function saveTestSettings(page, apiKey) {
-  await page.evaluate(async (key) => {
-    const response = await chrome.runtime.sendMessage({
+  const settings = {
+    provider: 'openai-compatible',
+    baseUrl: 'https://api.example.com/v1',
+    model: 'textduet-smoke-model',
+    models: ['textduet-smoke-model', 'textduet-smoke-model-fast'],
+    targetLanguage: 'zh-CN',
+    displayMode: 'bilingual',
+    translationColor: '#b91c1c',
+    customSystemPrompt: '',
+  };
+  // Provider-origin changes and persistence-mode changes are intentionally
+  // separate operations in the runtime contract. Start with session storage
+  // so the test can create a vault, then migrate that key into the vault.
+  await saveProviderSettingsStep(page, { ...settings, apiKeyPersistence: 'session' }, apiKey);
+  const vaultPassword = 'browser-test-vault-2026';
+  const vault = await page.evaluate(async (password) =>
+    chrome.runtime.sendMessage({ type: 'CREATE_VAULT', password }), vaultPassword);
+  if (!vault?.isUnlocked) throw new Error('test vault could not be created');
+  await saveProviderSettingsStep(page, { ...settings, apiKeyPersistence: 'local' });
+  const consent = await page.evaluate(() =>
+    chrome.runtime.sendMessage({ type: 'CONFIRM_TRANSLATION_CONSENT' }));
+  if (!consent?.isConfirmed) throw new Error('translation consent could not be confirmed');
+}
+
+async function saveProviderSettingsStep(page, settings, apiKey) {
+  const response = await page.evaluate(({ nextSettings, key }) =>
+    chrome.runtime.sendMessage({
       type: 'SAVE_PROVIDER_SETTINGS',
-      settings: {
-        provider: 'openai-compatible',
-        baseUrl: 'https://api.example.com/v1',
-        model: 'textduet-smoke-model',
-        models: ['textduet-smoke-model', 'textduet-smoke-model-fast'],
-        apiKeyPersistence: 'local',
-        targetLanguage: 'zh-CN',
-        displayMode: 'bilingual',
-        translationColor: '#b91c1c',
-        customSystemPrompt: '',
-      },
-      apiKey: key,
-    });
-    if (!response?.ok) {
-      throw new Error(response?.message || 'save failed');
-    }
-  }, apiKey);
+      settings: nextSettings,
+      ...(key ? { apiKey: key } : {}),
+    }), { nextSettings: settings, key: apiKey });
+  if (!response?.ok) throw new Error(response?.message || 'save failed');
 }
 
 async function verifyQwenPreset(page) {
@@ -382,8 +408,8 @@ async function verifySavedM2Settings(page) {
   const activeTag = page.getByRole('button', { name: /textduet-smoke-model.*当前/ });
   await activeTag.waitFor();
   assert.equal(await activeTag.getAttribute('aria-pressed'), 'true');
-  assert.equal(await page.getByRole('button', { name: '删除模型 textduet-smoke-model' }).count(), 1);
-  assert.equal(await page.getByRole('button', { name: '删除模型 textduet-smoke-model-fast' }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: '删除模型 textduet-smoke-model', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: '删除模型 textduet-smoke-model-fast', exact: true }).count(), 1);
   const modelInput = page.getByLabel('添加模型名称或 code');
   await modelInput.fill('temporary-model');
   await modelInput.press('Enter');
@@ -449,21 +475,17 @@ async function seedUsageLedger(page) {
 
 async function verifyUsageDashboard(page) {
   await page.getByRole('heading', { name: 'Token 用量' }).waitFor();
-  await page.locator('.usage-chart canvas').waitFor();
-  const canvasMetrics = await page.locator('.usage-chart canvas').evaluate((element) => {
-    if (!(element instanceof HTMLCanvasElement)) throw new Error('usage chart canvas missing');
-    const context = element.getContext('2d');
-    if (!context) throw new Error('usage chart canvas context missing');
-    const pixels = context.getImageData(0, 0, element.width, element.height).data;
-    let nonTransparentPixels = 0;
-    for (let index = 3; index < pixels.length; index += 4) {
-      if (pixels[index] > 0) nonTransparentPixels += 1;
-    }
-    return { width: element.width, height: element.height, nonTransparentPixels };
-  });
-  assert(canvasMetrics.width > 0);
-  assert(canvasMetrics.height > 0);
-  assert(canvasMetrics.nonTransparentPixels > 100);
+  await page.locator('.usage-chart svg').waitFor();
+  const chartMetrics = await page.locator('.usage-chart svg').evaluate((element) => ({
+    width: element.getBoundingClientRect().width,
+    height: element.getBoundingClientRect().height,
+    pathCount: element.querySelectorAll('path').length,
+    pointCount: element.querySelectorAll('circle').length,
+  }));
+  assert(chartMetrics.width > 0);
+  assert(chartMetrics.height > 0);
+  assert(chartMetrics.pathCount >= 2);
+  assert(chartMetrics.pointCount > 0);
   const usageText = await page
     .locator('section.settings-card')
     .filter({ has: page.getByRole('heading', { name: 'Token 用量' }) })
@@ -663,11 +685,24 @@ async function getTranslationTexts(page) {
 
 async function startFixtureTranslation(worker, popupPage, fixturePage) {
   await fixturePage.bringToFront();
-  const fixtureTabId = await popupPage.evaluate(async () => {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return activeTab?.id;
-  });
-  assert.equal(typeof fixtureTabId, 'number');
+  // Do not infer the target from the active extension tab. Opening/reloading
+  // popup or options pages can leave that page active even after the fixture
+  // is brought to the front. Resolve the exact fixture URL instead.
+  const fixtureUrl = fixturePage.url();
+  const fixtureTabId = await popupPage.evaluate(async (url) => {
+    const target = new URL(url);
+    const tabs = await chrome.tabs.query({});
+    return tabs.find((tab) => {
+      if (!tab.url) return false;
+      try {
+        const candidate = new URL(tab.url);
+        return candidate.origin === target.origin && candidate.pathname === target.pathname;
+      } catch {
+        return false;
+      }
+    })?.id;
+  }, fixtureUrl);
+  assert.equal(typeof fixtureTabId, 'number', `fixture tab not found: ${fixtureUrl}`);
 
   const { activeTabId, response } = await popupPage.evaluate(async (tabId) => {
     await chrome.tabs.update(tabId, { active: true });
@@ -685,11 +720,21 @@ async function startFixtureTranslation(worker, popupPage, fixturePage) {
 
 async function stopFixtureTranslation(worker, popupPage, fixturePage) {
   await fixturePage.bringToFront();
-  const fixtureTabId = await popupPage.evaluate(async () => {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return activeTab?.id;
-  });
-  assert.equal(typeof fixtureTabId, 'number');
+  const fixtureUrl = fixturePage.url();
+  const fixtureTabId = await popupPage.evaluate(async (url) => {
+    const target = new URL(url);
+    const tabs = await chrome.tabs.query({});
+    return tabs.find((tab) => {
+      if (!tab.url) return false;
+      try {
+        const candidate = new URL(tab.url);
+        return candidate.origin === target.origin && candidate.pathname === target.pathname;
+      } catch {
+        return false;
+      }
+    })?.id;
+  }, fixtureUrl);
+  assert.equal(typeof fixtureTabId, 'number', `fixture tab not found: ${fixtureUrl}`);
   const response = await popupPage.evaluate(async (tabId) => {
     await chrome.tabs.update(tabId, { active: true });
     return chrome.runtime.sendMessage({ type: 'STOP_ACTIVE_TAB' });
@@ -811,9 +856,25 @@ async function assessFixture(page) {
         (total, element) => total + element.querySelectorAll('.textduet-translation').length,
         0,
       ),
+      excludedDetails: excludeElements.flatMap((element) => Array.from(
+        element.querySelectorAll('.textduet-translation'),
+      ).map((translation) => ({
+        excludedTag: element.tagName,
+        excludedText: element.textContent,
+        translationText: translation.textContent,
+        translationParent: translation.parentElement?.tagName,
+      }))),
       unexpectedTranslationCount: translations.filter(
         (translation) => translation.parentElement?.getAttribute('data-td-expect') !== 'include',
       ).length,
+      unexpectedDetails: translations.filter(
+        (translation) => translation.parentElement?.getAttribute('data-td-expect') !== 'include',
+      ).map((translation) => ({
+        text: translation.textContent,
+        parent: translation.parentElement?.tagName,
+        parentExpect: translation.parentElement?.getAttribute('data-td-expect'),
+        owner: translation.getAttribute('data-textduet-owner-id'),
+      })),
       allMocked: translations.every((translation) =>
         (translation.textContent || '').startsWith('【Mock:')),
     };
@@ -830,7 +891,7 @@ async function assessUntrustedOutput(page) {
         '.textduet-translation img, .textduet-translation script',
       ).length,
       executionMarker: globalThis.__textDuetExecuted === true,
-      originalSourcePresent: document.querySelectorAll('[data-td-expect="include"]').length === 11,
+      originalSourcePresent: document.querySelectorAll('[data-td-expect="include"]').length === 14,
     };
   });
 }
@@ -838,8 +899,8 @@ async function assessUntrustedOutput(page) {
 function assertFixtureAssessment(fixture, assessment) {
   assert.equal(assessment.missingCount, 0, `${fixture}: expected blocks missing`);
   assert.equal(assessment.duplicateCount, 0, `${fixture}: duplicate translations found`);
-  assert.equal(assessment.excludedTranslationCount, 0, `${fixture}: excluded content translated`);
-  assert.equal(assessment.unexpectedTranslationCount, 0, `${fixture}: unexpected content translated`);
+  assert.equal(assessment.excludedTranslationCount, 0, `${fixture}: excluded content translated (${JSON.stringify(assessment.excludedDetails || [])})`);
+  assert.equal(assessment.unexpectedTranslationCount, 0, `${fixture}: unexpected content translated (${JSON.stringify(assessment.unexpectedDetails || [])})`);
   assert.equal(
     assessment.translatedCount,
     assessment.expectedIncludeCount,

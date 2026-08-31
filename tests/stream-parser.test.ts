@@ -11,6 +11,20 @@ describe('stream parser', () => {
     expect(parseSsePayload('{"usage":{"prompt_tokens":3,"completion_tokens":2}}')).toEqual({
       done: false, usage: { prompt_tokens: 3, completion_tokens: 2 },
     });
+    expect(parseSsePayload('{"usage":{"prompt_tokens":-1,"completion_tokens":2}}')).toEqual({
+      done: false,
+    });
+    expect(parseSsePayload(`{"usage":{"prompt_tokens":${Number.MAX_SAFE_INTEGER},"completion_tokens":2}}`)).toEqual({
+      done: false,
+    });
+  });
+
+  it('rejects malformed consumed fields instead of trusting a type assertion', () => {
+    expect(() => parseSsePayload('{"choices":[{"delta":{"content":42}}]}')).toThrow(
+      '模型流式响应格式无效',
+    );
+    expect(() => parseSsePayload('{"model":42}')).toThrow('模型流式响应格式无效');
+    expect(() => parseSsePayload('not-json')).toThrow('模型流式响应格式无效');
   });
 
   it('extracts completed block objects before the full envelope is complete', () => {

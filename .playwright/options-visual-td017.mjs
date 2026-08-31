@@ -83,7 +83,7 @@ try {
   await page.goto(server.url);
   await page.getByRole('heading', { name: '连接你的翻译模型' }).waitFor();
   await page.getByRole('button', { name: /qwen-plus.*当前/ }).waitFor();
-  await page.locator('.usage-chart canvas').waitFor();
+  await page.locator('.usage-chart svg').waitFor();
   const chartLegend = page.locator('.usage-chart-legend');
   await chartLegend.waitFor();
   assert.deepEqual(await chartLegend.locator('span').allTextContents(), ['输入', '输出']);
@@ -104,16 +104,12 @@ try {
     await modelFilters.filter({ hasText: 'qwen-plus-fast' }).getAttribute('aria-pressed'),
     'true',
   );
-  const canvasPixels = await page.locator('.usage-chart canvas').evaluate((canvas) => {
-    const context = canvas.getContext('2d');
-    const pixels = context?.getImageData(0, 0, canvas.width, canvas.height).data || [];
-    let visible = 0;
-    for (let index = 3; index < pixels.length; index += 4) {
-      if (pixels[index] > 0) visible += 1;
-    }
-    return visible;
+  const canvasPixels = await page.locator('.usage-chart svg').evaluate((svg) => {
+    const paths = Array.from(svg.querySelectorAll('path'));
+    const circles = svg.querySelectorAll('circle').length;
+    return paths.filter((path) => path.getAttribute('d')?.trim()).length * 1_000 + circles;
   });
-  assert(canvasPixels > 100, 'usage chart is blank');
+  assert(canvasPixels > 1_000, 'usage chart is blank');
   assert.equal(await hasHorizontalOverflow(page), false);
   await page.screenshot({
     path: resolve('output/playwright', 'td017-options-desktop.png'),

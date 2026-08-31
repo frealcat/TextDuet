@@ -95,4 +95,11 @@ describe('API key is isolated per origin (TD-2026-WS3 fix)', () => {
     expect(s.apiKey).toBe('sk-qwen');
     expect(s.model).toBe('qwen-plus');
   });
+
+  it('treats path-only edits as the same Provider origin for key migration', () => {
+    expect(normalizeBaseUrlOrigin('https://api.example.com/v1'))
+      .toBe(normalizeBaseUrlOrigin('https://api.example.com/v2'));
+    expect(normalizeBaseUrlOrigin('https://api.example.com/v1'))
+      .not.toBe(normalizeBaseUrlOrigin('https://other.example.com/v1'));
+  });
 });

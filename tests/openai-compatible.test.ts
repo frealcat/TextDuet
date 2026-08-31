@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  MAX_STREAM_BUFFER_BYTES,
+  MAX_STREAM_CONTENT_BYTES,
+  MAX_STREAM_RESPONSE_BYTES,
   OpenAiCompatibleProvider,
   parseTranslatedBlocks,
   resolveChatCompletionsUrl,
@@ -172,7 +175,51 @@ describe('OpenAiCompatibleProvider', () => {
     await expect(provider.translateStream(settings, 'placeholder-api-key', request, {
       onBlock: (block) => blocks.push(block),
     })).rejects.toThrow('模型流式响应未完整结束');
-    expect(blocks).toEqual([{ id: 'block-1', translatedText: '你好' }]);
+    expect(blocks).toEqual([]);
+  });
+
+  it('rejects an SSE response whose raw body exceeds the total byte ceiling', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      new Uint8Array(MAX_STREAM_RESPONSE_BYTES + 1),
+      { status: 200, headers: { 'content-type': 'text/event-stream' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new OpenAiCompatibleProvider({ retryBaseDelayMs: 0 });
+
+    await expect(provider.translateStream(settings, 'placeholder-api-key', request)).rejects.toThrow(
+      '模型流式响应超过大小限制',
+    );
+  });
+
+  it('rejects an unterminated SSE event before it can grow unbounded', async () => {
+    const body = `data: ${'x'.repeat(MAX_STREAM_BUFFER_BYTES + 1)}`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new OpenAiCompatibleProvider({ retryBaseDelayMs: 0 });
+
+    await expect(provider.translateStream(settings, 'placeholder-api-key', request)).rejects.toThrow(
+      '模型流式响应超过大小限制',
+    );
+  });
+
+  it('rejects cumulative model content beyond the content ceiling', async () => {
+    const delta = 'a'.repeat(64_000);
+    const event = (content: string) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
+    const eventCount = Math.ceil((MAX_STREAM_CONTENT_BYTES + 1) / delta.length);
+    const body = Array.from({ length: eventCount }, () => event(delta)).join('') + 'data: [DONE]\n\n';
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new OpenAiCompatibleProvider({ retryBaseDelayMs: 0 });
+
+    await expect(provider.translateStream(settings, 'placeholder-api-key', request)).rejects.toThrow(
+      '模型流式响应超过大小限制',
+    );
   });
 
   it('returns a validated translation from a compatible endpoint', async () => {

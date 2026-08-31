@@ -1,5 +1,5 @@
 :root {
-  /* TextDuet Design System v1.0 — see design-system/MASTER.md */
+  /* TextDuet visual tokens v1.0 */
   --td-bg: #FBF6E9;
   --td-surface: #FFFFFF;
   --td-surface-muted: #F4EFE3;
@@ -91,6 +91,28 @@ h1 {
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 8px 24px rgb(35 32 24 / 6%);
+}
+
+.consent-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid var(--td-border-strong);
+  border-radius: 14px;
+  color: var(--td-text);
+  background: var(--td-primary-soft);
+}
+
+.consent-card h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.consent-card p {
+  color: var(--td-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 label {
@@ -396,8 +418,7 @@ footer button {
 
 
 /* ============================================================
-   TextDuet Design System v1.0 — v2 visual upgrade
-   See design-system/MASTER.md
+   TextDuet visual tokens v1.0 — v2 visual upgrade
    ============================================================ */
 
 /* Use installed/fallback UI and serif fonts; extension pages must not fetch

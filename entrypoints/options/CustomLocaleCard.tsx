@@ -59,7 +59,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange, id
     if (busy) return;
     setBusy(true);
     setError('');
-    setProgress(`正在翻译到 ${displayName}…`);
+    setProgress(t('language.custom.preparing', { language: displayName }));
 
     const fetcher: Fetcher = async (targetTag, targetLocale, sourceBatch) => {
       const raw: unknown = await browser.runtime.sendMessage({
@@ -75,17 +75,21 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange, id
       const result = await translateUiTo(tag as never, {
         fetcher,
         displayName,
-        onProgress: (p) => setProgress(p.message),
+        onProgress: (p) => setProgress(t('language.custom.progress', {
+          language: displayName,
+          done: p.done,
+          total: p.total,
+        })),
       });
       if (!result.ok) {
-        setError(result.errorMessage);
+        setError(t('language.custom.translateFailed'));
         return;
       }
       setRecords(listUserLocales());
       onLocaleChange(tag);
-      setProgress(`已翻译到 ${displayName}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '翻译失败');
+      setProgress(t('language.custom.completed', { language: displayName }));
+    } catch {
+      setError(t('language.custom.translateFailed'));
     } finally {
       setBusy(false);
     }
@@ -94,7 +98,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange, id
   async function handleTranslateCustom(): Promise<void> {
     const tag = customTag.trim();
     if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/.test(tag)) {
-      setError('请输入合法的 BCP-47 标签，例如 fr-FR / ja-JP');
+      setError(t('language.custom.invalidTag'));
       return;
     }
     await translateTo(tag, tag);
@@ -155,7 +159,7 @@ export function CustomLocaleCard({ currentLanguagePreference, onLocaleChange, id
             type="text"
             value={customTag}
             onChange={(e) => setCustomTag(e.target.value)}
-            placeholder="例如：fr-FR / ja-JP / zh-TW"
+            placeholder={t('language.custom.inputPlaceholder')}
             spellCheck={false}
             disabled={busy}
           />

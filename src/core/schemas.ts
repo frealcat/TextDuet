@@ -3,13 +3,26 @@ import { isSupportedTranslationColor } from './translation-colors';
 
 const LANGUAGE_CODE_MAX_LENGTH = 64;
 const LANGUAGE_NAME_MAX_LENGTH = 64;
-const MODEL_NAME_MAX_LENGTH = 256;
+export const MODEL_NAME_MAX_LENGTH = 256;
 const BLOCK_ID_MAX_LENGTH = 128;
 const SOURCE_TEXT_MAX_LENGTH = 4_000;
 const TRANSLATED_TEXT_MAX_LENGTH = 16_000;
 const MAX_BLOCKS_PER_BATCH = 200;
 const MAX_MONEY_AMOUNT = 1_000_000_000;
 const MAX_MODEL_OPTIONS = 50;
+/** Bounds for the trusted Options -> Service Worker UI-locale batch. */
+export const I18N_BATCH_MAX_KEYS = 50;
+export const I18N_BATCH_KEY_MAX_LENGTH = 128;
+export const I18N_BATCH_VALUE_MAX_LENGTH = 4_000;
+export const I18N_BATCH_TOTAL_CHARS = 64_000;
+/** Bounds for the untrusted Provider response to an i18n batch. */
+export const I18N_RESULT_MAX_KEYS = 50;
+export const I18N_RESULT_KEY_MAX_LENGTH = 128;
+export const I18N_RESULT_VALUE_MAX_LENGTH = 16_000;
+export const I18N_RESULT_TOTAL_CHARS = 64_000;
+const isSafeDictionaryKey = (key: string): boolean => (
+  key !== '__proto__' && key !== 'constructor' && key !== 'prototype'
+);
 const SourceLanguagePreferenceSchema = z.string().check(z.trim(), z.minLength(1), z.maxLength(LANGUAGE_CODE_MAX_LENGTH));
 const TargetLanguagePreferenceSchema = z.string().check(z.trim(), z.minLength(1), z.maxLength(LANGUAGE_CODE_MAX_LENGTH));
 
@@ -36,7 +49,12 @@ const HttpsUrlSchema = z.string().check(
   z.maxLength(2_048),
   z.refine((value) => {
     try {
-      return new URL(value).protocol === 'https:';
+      const url = new URL(value);
+      return url.protocol === 'https:'
+        && !url.username
+        && !url.password
+        && !url.search
+        && !url.hash;
     } catch {
       return false;
     }
@@ -375,8 +393,17 @@ export const CostDashboardSchema = z.strictObject({
   isLedgerAvailable: z.boolean(),
 });
 
+// The public view deliberately omits the internal-only key fields
+// (`apiKey` / `apiKeyByOrigin`, see TD-2026-WS3): the raw key must never
+// cross the Service Worker boundary into Popup / Options.
+const {
+  apiKey: _internalApiKey,
+  apiKeyByOrigin: _internalApiKeyByOrigin,
+  ...publicProviderSettingsShape
+} = ProviderSettingsSchema.shape;
+
 export const PublicProviderSettingsSchema = z.strictObject({
-  ...ProviderSettingsSchema.shape,
+  ...publicProviderSettingsShape,
   hasApiKey: z.boolean(),
 });
 
@@ -385,15 +412,59 @@ export const OperationResultSchema = z.strictObject({
   message: z.optional(z.string().check(z.maxLength(2_000))),
 });
 
+export const VaultStatusSchema = z.strictObject({
+  exists: z.boolean(),
+  isUnlocked: z.boolean(),
+  version: z.nullable(z.int().check(z.positive())),
+});
+
+export const TranslationConsentStatusSchema = z.strictObject({
+  isConfirmed: z.boolean(),
+  version: z.nullable(z.string().check(z.minLength(1), z.maxLength(64))),
+});
+
 /** Response shape for TRANSLATE_I18N_BATCH: translated key->string map. */
 export const I18nBatchTranslationResultSchema = z.strictObject({
   ok: z.boolean(),
-  translations: z.optional(z.record(z.string(), z.string())),
-  model: z.optional(z.string()),
+  translations: z.optional(z.record(
+    z.string().check(
+      z.minLength(1),
+      z.maxLength(I18N_RESULT_KEY_MAX_LENGTH),
+      z.refine(isSafeDictionaryKey, { error: 'i18n 翻译结果包含非法键' }),
+    ),
+    z.string().check(z.maxLength(I18N_RESULT_VALUE_MAX_LENGTH)),
+  ).check(
+    z.refine(
+      (translations) => Object.keys(translations).length <= I18N_RESULT_MAX_KEYS,
+      { error: 'i18n 翻译结果包含的键过多' },
+    ),
+    z.refine(
+      (translations) => Object.entries(translations).reduce(
+        (total, [key, value]) => total + key.length + value.length,
+        0,
+      ) <= I18N_RESULT_TOTAL_CHARS,
+      { error: 'i18n 翻译结果字符数超过限制' },
+    ),
+  )),
+  model: z.optional(z.string().check(z.trim(), z.maxLength(MODEL_NAME_MAX_LENGTH))),
   errorMessage: z.optional(z.string().check(z.maxLength(2_000))),
 });
 
 export const RuntimeMessageSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('GET_VAULT_STATUS') }),
+  z.strictObject({
+    type: z.literal('CREATE_VAULT'),
+    password: z.string().check(z.minLength(8), z.maxLength(1_024)),
+  }),
+  z.strictObject({
+    type: z.literal('UNLOCK_VAULT'),
+    password: z.string().check(z.minLength(1), z.maxLength(1_024)),
+  }),
+  z.strictObject({ type: z.literal('LOCK_VAULT') }),
+  z.strictObject({ type: z.literal('CLEAR_VAULT') }),
+  z.strictObject({ type: z.literal('CLEAR_VAULT_CACHE') }),
+  z.strictObject({ type: z.literal('GET_TRANSLATION_CONSENT') }),
+  z.strictObject({ type: z.literal('CONFIRM_TRANSLATION_CONSENT') }),
   z.strictObject({ type: z.literal('GET_PROVIDER_SETTINGS') }),
   z.strictObject({ type: z.literal('GET_COST_DASHBOARD') }),
   z.strictObject({ type: z.literal('GET_USAGE_HISTORY') }),
@@ -488,7 +559,27 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('TRANSLATE_I18N_BATCH'),
     targetTag: z.string().check(z.minLength(2), z.maxLength(LANGUAGE_CODE_MAX_LENGTH)),
     targetLocale: z.string().check(z.minLength(1), z.maxLength(LANGUAGE_NAME_MAX_LENGTH)),
-    sourceBatch: z.record(z.string(), z.string()),
+    sourceBatch: z.record(
+      z.string().check(
+        z.trim(),
+        z.minLength(1),
+        z.maxLength(I18N_BATCH_KEY_MAX_LENGTH),
+        z.refine(isSafeDictionaryKey, { error: 'i18n 批次包含非法键' }),
+      ),
+      z.string().check(z.maxLength(I18N_BATCH_VALUE_MAX_LENGTH)),
+    ).check(
+      z.refine(
+        (batch) => Object.keys(batch).length <= I18N_BATCH_MAX_KEYS,
+        { error: 'i18n 批次包含的键过多' },
+      ),
+      z.refine(
+        (batch) => Object.entries(batch).reduce(
+          (total, [key, value]) => total + key.length + value.length,
+          0,
+        ) <= I18N_BATCH_TOTAL_CHARS,
+        { error: 'i18n 批次字符数超过限制' },
+      ),
+    ),
   }),
   z.strictObject({
     type: z.literal('TRANSLATE_SELECTION'),
@@ -558,12 +649,47 @@ export function parsePublicProviderSettings(
   return result.data;
 }
 
+/**
+ * Builds the redacted public view of provider settings for extension
+ * pages. TD-2026-028: the Service Worker stores the raw key inside the
+ * settings object (per-origin map + active field, TD-2026-WS3), so the
+ * public response MUST be built through this helper - spreading the
+ * parsed settings verbatim leaked `apiKey` / `apiKeyByOrigin` into the
+ * runtime response and the popup's leak check rejected the whole
+ * payload ("无法读取扩展配置").
+ */
+export function buildPublicProviderSettings(
+  settings: z.infer<typeof ProviderSettingsSchema>,
+  hasApiKey: boolean,
+): z.infer<typeof PublicProviderSettingsSchema> {
+  const {
+    apiKey: _strippedApiKey,
+    apiKeyByOrigin: _strippedApiKeyByOrigin,
+    ...publicView
+  } = settings;
+  return { ...publicView, hasApiKey };
+}
+
 /** Parses a standard operation response returned by the Service Worker. */
 export function parseOperationResult(value: unknown): z.infer<typeof OperationResultSchema> {
   const result = OperationResultSchema.safeParse(value);
   if (!result.success) {
     throw new Error('扩展返回的操作结果格式无效');
   }
+  return result.data;
+}
+
+export function parseVaultStatus(value: unknown): z.infer<typeof VaultStatusSchema> {
+  const result = VaultStatusSchema.safeParse(value);
+  if (!result.success) throw new Error('扩展返回的保险箱状态格式无效');
+  return result.data;
+}
+
+export function parseTranslationConsentStatus(
+  value: unknown,
+): z.infer<typeof TranslationConsentStatusSchema> {
+  const result = TranslationConsentStatusSchema.safeParse(value);
+  if (!result.success) throw new Error('扩展返回的翻译确认状态格式无效');
   return result.data;
 }
 

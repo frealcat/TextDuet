@@ -36,7 +36,7 @@ TextDuet 自 2026-08-14 起采用 **Apache License 2.0（Apache-2.0）**。根�
 4. 引入第三方代码或资产时，必须核对其许可证兼容性并保留所需归属信息。
 5. 若修改来自第三方的 Apache-2.0 文件，应按许可证要求保留原有通知并显著标明修改。
 6. 发布物同时保留 `THIRD_PARTY_NOTICES.md` 中适用的第三方版权与许可证声明。
-7. 用量图表按需引入 Apache ECharts（Apache-2.0）；其 zrender（BSD-3-Clause）与 tslib（0BSD）运行时归属一并记录在第三方声明中。
+7. 用量图表使用项目内按需加载的 SVG/React 实现，不随扩展分发 Apache ECharts 或其图表运行时；锁定依赖树的完整许可证清单由发布流程生成到 `THIRD_PARTY_LICENSES.json`。
 
 ## 原始材料
 

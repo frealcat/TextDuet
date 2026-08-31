@@ -5,6 +5,7 @@ import type {
   PageTranslationState,
   PublicProviderSettings,
   RuntimeMessage,
+  TranslationConsentStatus,
   TranslationDisplayMode,
 } from '@/src/core/contracts';
 import { DEFAULT_SOURCE_LANGUAGE, DEFAULT_TARGET_LANGUAGE, resolveSystemLanguage } from '@/src/core/defaults';
@@ -14,8 +15,11 @@ import {
   parseOperationResult,
   parsePageTranslationState,
   parsePublicProviderSettings,
+  parseTranslationConsentStatus,
 } from '@/src/core/schemas';
 import { applyLocale, type LanguagePreference, resolveActiveLocale, useTranslation } from '@/src/i18n';
+
+type StatusTone = 'danger' | 'info' | 'success' | 'warning';
 
 export function App() {
   const { t } = useTranslation();
@@ -30,6 +34,9 @@ export function App() {
     hasRun: false,
   });
   const [displayMode, setDisplayMode] = useState<TranslationDisplayMode>('bilingual');
+  const [consent, setConsent] = useState<TranslationConsentStatus | null>(null);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [statusTone, setStatusTone] = useState<StatusTone>('info');
 
   useEffect(() => {
     browser.runtime
@@ -50,15 +57,19 @@ export function App() {
           translationColor: nextSettings.translationColor,
         } satisfies RuntimeMessage).catch(() => undefined);
       })
-      .catch(() => setStatus('无法读取扩展配置'));
+      .catch(() => setStatusMessage(t('popup.status.readSettingsError'), 'danger'));
     browser.runtime
       .sendMessage({ type: 'GET_COST_DASHBOARD' } satisfies RuntimeMessage)
       .then((value) => setCostDashboard(parseCostDashboard(value)))
-      .catch(() => setStatus('无法读取本地用量摘要'));
+      .catch(() => setStatusMessage(t('popup.status.readDashboardError'), 'danger'));
     browser.runtime
       .sendMessage({ type: 'GET_ACTIVE_TAB_TRANSLATION_STATE' } satisfies RuntimeMessage)
       .then((value) => setTranslationState(parsePageTranslationState(value)))
       .catch(() => setTranslationState({ state: 'idle', hasRun: false }));
+    browser.runtime
+      .sendMessage({ type: 'GET_TRANSLATION_CONSENT' } satisfies RuntimeMessage)
+      .then((value) => setConsent(parseTranslationConsentStatus(value)))
+      .catch(() => setStatusMessage(t('popup.consent.error'), 'danger'));
   }, []);
 
   useEffect(() => {
@@ -88,14 +99,23 @@ export function App() {
     if (translationState.message) setStatus(translationState.message);
   }, [translationState.message]);
 
+  function setStatusMessage(message: string, tone: StatusTone = 'info'): void {
+    setStatus(message);
+    setStatusTone(tone);
+  }
+
   async function translate(): Promise<void> {
     if (!settings?.hasApiKey || !settings.model) {
       await browser.runtime.openOptionsPage();
       return;
     }
+    if (!consent?.isConfirmed) {
+      setStatusMessage(t('popup.consent.error'), 'warning');
+      return;
+    }
 
     setBusy(true);
-    setStatus('正在提取并翻译网页…');
+    setStatusMessage(t('popup.status.translating'));
     try {
       const rawResult: unknown = await browser.runtime.sendMessage({
         type: 'TRANSLATE_ACTIVE_TAB',
@@ -103,12 +123,30 @@ export function App() {
         targetLanguage: targetLanguage === DEFAULT_TARGET_LANGUAGE ? resolveSystemLanguage() : targetLanguage,
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
-      setStatus(result.message || (result.ok ? '翻译已开始' : '翻译失败'));
+      setStatusMessage(
+        result.message || (result.ok ? t('popup.status.translateStarted') : t('popup.status.translateFailed')),
+        result.ok ? 'success' : 'danger',
+      );
       if (result.ok) setTranslationState({ state: 'progress', hasRun: true });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '翻译失败');
+      setStatusMessage(error instanceof Error ? error.message : t('popup.status.translateFailed'), 'danger');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function confirmConsent(): Promise<void> {
+    setConsentBusy(true);
+    setStatusMessage('');
+    try {
+      const rawStatus: unknown = await browser.runtime.sendMessage({
+        type: 'CONFIRM_TRANSLATION_CONSENT',
+      } satisfies RuntimeMessage);
+      setConsent(parseTranslationConsentStatus(rawStatus));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : t('popup.consent.confirmFailed'), 'danger');
+    } finally {
+      setConsentBusy(false);
     }
   }
 
@@ -119,9 +157,9 @@ export function App() {
       const result = parseOperationResult(await browser.runtime.sendMessage({
         type: 'SET_LANGUAGE_PREFERENCES', sourceLanguage: nextSourceLanguage, targetLanguage: nextTargetLanguage,
       } satisfies RuntimeMessage));
-      if (!result.ok) throw new Error(result.message || '语言偏好保存失败');
+      if (!result.ok) throw new Error(result.message || t('popup.status.langSaveFailed'));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '语言偏好保存失败');
+      setStatusMessage(error instanceof Error ? error.message : t('popup.status.langSaveFailed'), 'danger');
     }
   }
 
@@ -132,10 +170,10 @@ export function App() {
         type: 'STOP_ACTIVE_TAB',
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
-      setStatus(result.message || '已停止翻译');
+      setStatusMessage(result.message || t('popup.status.stopped'), result.ok ? 'success' : 'danger');
       if (result.ok) setTranslationState({ state: 'stopped', hasRun: true });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '停止翻译失败');
+      setStatusMessage(error instanceof Error ? error.message : t('popup.status.stopFailed'), 'danger');
     } finally {
       setBusy(false);
     }
@@ -158,11 +196,11 @@ export function App() {
         displayMode: nextMode,
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
-      if (!result.ok) throw new Error(result.message || '切换显示模式失败');
-      setStatus(result.message || '显示模式已切换');
+      if (!result.ok) throw new Error(result.message || t('popup.status.modeChangeFailed'));
+      setStatusMessage(result.message || t('popup.status.modeChanged'), 'success');
     } catch (error) {
       setDisplayMode(previousMode);
-      setStatus(error instanceof Error ? error.message : '切换显示模式失败');
+      setStatusMessage(error instanceof Error ? error.message : t('popup.status.modeChangeFailed'), 'danger');
     }
   }
 
@@ -173,7 +211,7 @@ export function App() {
       const result = parseOperationResult(await browser.runtime.sendMessage({
         type: 'SET_SELECTION_QUICK_ACTION', enabled,
       } satisfies RuntimeMessage));
-      if (!result.ok) throw new Error(result.message || '快捷翻译设置失败');
+      if (!result.ok) throw new Error(result.message || t('popup.status.quickActionFailed'));
       await browser.runtime.sendMessage({
         type: 'CONFIGURE_SELECTION_QUICK_ACTION',
         enabled,
@@ -183,7 +221,7 @@ export function App() {
       } satisfies RuntimeMessage);
     } catch (error) {
       setSettings((current) => current ? { ...current, selectionQuickAction: !enabled } : current);
-      setStatus(error instanceof Error ? error.message : '快捷翻译设置失败');
+      setStatusMessage(error instanceof Error ? error.message : t('popup.status.quickActionFailed'), 'danger');
     }
   }
 
@@ -197,11 +235,11 @@ export function App() {
         model,
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
-      if (!result.ok) throw new Error(result.message || '切换模型失败');
-      setStatus(result.message || '模型已切换');
+      if (!result.ok) throw new Error(result.message || t('popup.status.modelChangeFailed'));
+      setStatusMessage(result.message || t('popup.status.modelChanged'), 'success');
     } catch (error) {
       setSettings((current) => current ? { ...current, model: previousModel } : current);
-      setStatus(error instanceof Error ? error.message : '切换模型失败');
+      setStatusMessage(error instanceof Error ? error.message : t('popup.status.modelChangeFailed'), 'danger');
     }
   }
 
@@ -222,7 +260,23 @@ export function App() {
         </div>
       </header>
 
-      <section className="control-card" aria-label={t('网页翻译控制')}>
+      {consent && !consent.isConfirmed && (
+        <section className="consent-card" aria-labelledby="translation-consent-title">
+          <h2 id="translation-consent-title">{t('popup.consent.title')}</h2>
+          <p>{t('popup.consent.description')}</p>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => void confirmConsent()}
+            disabled={consentBusy}
+          >
+            {consentBusy && <SpinnerIcon className="spin" size={16} />}
+            {consentBusy ? t('popup.button.processing') : t('popup.consent.confirm')}
+          </button>
+        </section>
+      )}
+
+      <section className="control-card" aria-label={t('popup.controls.aria')}>
         <LanguagePairPicker sourceLanguage={sourceLanguage} targetLanguage={targetLanguage} onChange={(source, target) => void changeLanguage(source, target)} compact />
 
         {modelOptions.length > 1 && (
@@ -234,7 +288,7 @@ export function App() {
           </label>
         )}
 
-        <button className="primary-button" type="button" onClick={toggleTranslation} disabled={busy}>
+        <button className="primary-button" type="button" onClick={toggleTranslation} disabled={busy || consent === null}>
           {busy ? (
             <SpinnerIcon className="spin" size={16} />
           ) : isTranslating ? (
@@ -242,23 +296,27 @@ export function App() {
           ) : (
             <PlayIcon size={16} />
           )}
-          {settings?.hasApiKey
+          {settings?.hasApiKey && consent?.isConfirmed
             ? busy
-              ? '处理中…'
+              ? t('popup.button.processing')
               : isTranslating
-                ? '停止翻译'
-                : '翻译当前网页'
-            : '配置模型后开始'}
+                ? t('popup.button.stop')
+                : t('popup.button.translate')
+            : consent === null
+              ? t('popup.consent.loading')
+              : settings?.hasApiKey
+                ? t('popup.consent.title')
+                : t('popup.button.setup')}
         </button>
 
-        <div className="display-segments" aria-label={t('网页显示模式')}>
+        <div className="display-segments" aria-label={t('popup.display.aria')}>
           <button
             type="button"
             aria-pressed={displayMode === 'bilingual'}
             disabled={!translationState.hasRun}
             onClick={() => void changeDisplayMode('bilingual')}
           >
-            双语
+            {t('popup.display.bilingual')}
           </button>
           <button
             type="button"
@@ -266,7 +324,7 @@ export function App() {
             disabled={!translationState.hasRun}
             onClick={() => void changeDisplayMode('source-only')}
           >
-            原文
+            {t('popup.display.sourceOnly')}
           </button>
           <button
             type="button"
@@ -274,7 +332,7 @@ export function App() {
             disabled={!translationState.hasRun}
             onClick={() => void changeDisplayMode('translated-only')}
           >
-            译文
+            {t('popup.display.translatedOnly')}
           </button>
         </div>
         <label className="quick-action-toggle">
@@ -283,23 +341,26 @@ export function App() {
         </label>
       </section>
 
-      <section className="cost-card" aria-label={t('今日模型用量')}>
+      <section className="cost-card" aria-label={t('popup.cost.aria')}>
         <div className="cost-title">
           <span>
             <ChartLineIcon size={16} />
-            今日用量
+            {t('popup.cost.title')}
           </span>
           {costDashboard?.today.hasEstimatedUsage && <small>{t('popup.cost.estimated')}</small>}
         </div>
         {costDashboard ? (
           <>
             <strong>
-              {(costDashboard.today.inputTokens + costDashboard.today.outputTokens)
-                .toLocaleString('en-US')} token
+              {t('popup.cost.totalTokens', {
+                count: (costDashboard.today.inputTokens + costDashboard.today.outputTokens).toLocaleString('en-US'),
+              })}
             </strong>
             <p>
-              输入 {costDashboard.today.inputTokens.toLocaleString('en-US')} · 输出{' '}
-              {costDashboard.today.outputTokens.toLocaleString('en-US')}
+              {t('popup.cost.inputOutput', {
+                input: costDashboard.today.inputTokens.toLocaleString('en-US'),
+                output: costDashboard.today.outputTokens.toLocaleString('en-US'),
+              })}
             </p>
             {costDashboard.today.budgetEnabled && (
               <div className="budget-progress">
@@ -310,7 +371,7 @@ export function App() {
                   {costDashboard.today.budgetPercentage.toFixed(0)}%
                 </progress>
                 <span>
-                  {budgetStatusText(costDashboard.today.budgetPercentage)} · 达到 100% 仅提醒
+                  {budgetStatusText(costDashboard.today.budgetPercentage, t)} · {t('popup.cost.budgetNote')}
                 </span>
               </div>
             )}
@@ -325,15 +386,7 @@ export function App() {
 
       {status && (
         <p
-          className={`td-badge ${
-            /失败|错误|不能|不可|拒绝/.test(status)
-              ? 'td-badge--danger'
-              : /警告|注意|未配置|即将|接近/.test(status)
-                ? 'td-badge--warning'
-                : /成功|已|完成|切换/.test(status)
-                  ? 'td-badge--success'
-                  : 'td-badge--info'
-          }`}
+          className={`td-badge td-badge--${statusTone}`}
           role="status"
           aria-live="polite"
         >
@@ -343,19 +396,20 @@ export function App() {
 
       <footer>
         <span className={settings?.hasApiKey ? 'ready-dot' : 'idle-dot'} aria-hidden="true" />
-        <span>{settings?.hasApiKey ? `${settings.model || '模型待配置'}` : '尚未配置 API Key'}</span>
-        <button type="button" onClick={() => browser.runtime.openOptionsPage()}>
+        <span>{settings?.hasApiKey ? settings.model || t('popup.footer.modelPending') : t('popup.footer.noApiKey')}</span>
+        <button type="button" onClick={() => browser.runtime.openOptionsPage()} aria-label={t('popup.settings.aria')}>
           <CogIcon size={14} />
-          设置
+          {t('popup.footer.openSettings')}
         </button>
       </footer>
     </main>
   );
 }
 
-function budgetStatusText(percentage: number): string {
-  if (percentage >= 100) return `已达到预算 · ${percentage.toFixed(0)}%`;
-  if (percentage >= 80) return `接近预算 · ${percentage.toFixed(0)}%`;
-  if (percentage >= 50) return `已使用一半 · ${percentage.toFixed(0)}%`;
-  return `预算已用 ${percentage.toFixed(0)}%`;
+function budgetStatusText(percentage: number, t: (key: string, params?: Record<string, string | number>) => string): string {
+  const percent = percentage.toFixed(0);
+  if (percentage >= 100) return t('popup.budget.reached', { percent });
+  if (percentage >= 80) return t('popup.budget.near', { percent });
+  if (percentage >= 50) return t('popup.budget.half', { percent });
+  return t('popup.budget.used', { percent });
 }

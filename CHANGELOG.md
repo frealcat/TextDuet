@@ -6,24 +6,47 @@ TextDuet 的用户可见变化记录在此文件中。格式参考 [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 TD-2026-WS3(API Key 按 Origin 隔离)引入的配置读取回归:保存过配置后,Popup 与 Options 页提示「无法读取扩展配置」,扩展无法使用。根因是 Service Worker 把含原始 API Key 的设置对象原样回传给扩展页,触发泄漏防御检查整体拒绝;现在公共视图通过 `buildPublicProviderSettings` 构造,`apiKey` / `apiKeyByOrigin` 不再跨越 Service Worker 边界。
+- 修复切换浏览器与其他 App 时译文区域被反复清除重插的问题:标签页恢复可见不再触发「清空全部译文 + 重扫」,改为仅对账扫描(已渲染且文本未变化的段落直接跳过),消除闪动与重复插入。
+- 修复 SPA 路由切换后动态内容监听失效的隐患:`onNavigate` 不再调用 `observer.abort()`(该调用会让 MutationObserver 在首次导航后永久失效,新视图的滚动加载内容不再被翻译)。
+- 修复切换 Base URL 后 `getApiKey` 未按 per-origin 映射解析、回退到全局旧 Key 的问题;余额查询、连接测试、i18n 字典翻译与翻译主链路现在都按当前 Origin 取 Key。
+- 修复 active/inactive 往返后 SPA 对账扫描递归翻译插件自身 DOM 的致命重复插入：候选提取跳过 TextDuet 的原文/译文/选区节点及当前已渲染源节点的包装后代；译文以源元素 ID 归属、可跨 SPA 包装恢复并回到源元素直接子级，既不误删真实子节点译文，也不会在 `translated-only` 模式被原文包装层隐藏。可见性节流仅在页面恢复 `visible` 后生效，避免 hidden 事件吞掉紧随其后的对账扫描。
+- 修复流式响应在异常、断流或不完整 SSE 下留下部分译文的问题：Provider 先完成 SSE/JSON、字段和区块 ID 集合校验，再由 Service Worker 一次性提交整批结果；旧式单块事件也不会绕过完整批次校验。
+- 修复 SPA 视图切换和选区变化期间迟到响应污染新页面的问题：请求绑定当前 run、视图 generation、选区版本、锚点、URL 和原文快照，失效结果只清理自身状态而不写入 DOM。
+- 修复流式 Port 在页面进入 bfcache、导航或同步 `postMessage` 失败时的清理与身份边界：只接受已校验的网页标签页 sender；已知 Chrome 生命周期断连会归类为可重试事件，其他发送错误仍按普通失败处理，端口异常会安全收口并避免遗留活动请求。
+- 收紧 SSE 外部 JSON 的 schema 校验、非负 usage 上限和 API URL 凭据/query/hash 拒绝，避免畸形 Provider 数据或带凭据地址进入运行时。
+- 修复 session/local 模式切换在当前 Origin 没有可迁移的 session Key 时可能遗留旧 Vault Key 的问题；空输入现在会显式清除同 Origin 的 stale Key，并保留其他 Origin 的密钥。
+- 收紧实验性 CSS Custom Highlight 路径：Highlight 仅用于可选的源范围装饰，译文始终由相邻纯文本节点显示；策略切换、单节点失效、构造失败和根节点清理都会移除旧范围，避免静默漏译或遗留状态。
+- 修复选区翻译在首次隐私确认未完成时只显示通用失败的问题；现在会按当前界面语言明确提示用户先在 Popup 或 Options 确认隐私说明。
+- 修复选区译文或错误提示插入表格单元格等正文容器后，被后续动态扫描再次当作源文本提交的问题；选区专属节点现在与整页译文一样从正文快照和变更观察中排除。
+- 修复同一流式 Port 顺序发送多个批次时后续批次无法被“停止翻译”取消的问题；每个批次现在拥有独立的端口控制器，端口关闭后也不会接受新请求。
+
+### Security
+
+- 收紧可信 Options 到 Service Worker 的自定义界面语言批次：最多 50 个键、单键最长 128 个字符、单值最长 4,000 个字符、批次总字符数最多 64,000，超限消息在运行时校验阶段拒绝。
+
 ### Changed
 
-- 0.2.0 起 TextDuet 跳过 0.1.0 / 0.1.1,直接发布完整重设计版;`docs/ITERATION-LOG.md` TD-2026-021 状态切为「V1.0 暂缓,合并到 0.2.0」,TD-2026-025 接管发布。
+- CI 与 Release 增加锁定 Playwright 版本的本地浏览器冒烟门禁；新增受限的原创 HTML 夹具服务，验证 active/inactive 往返、加密缓存命中与清理不会依赖外部网站或真实 Provider。
+- 0.2.0 起 TextDuet 跳过 0.1.0 / 0.1.1，直接发布完整重设计版。
 - 0.2.0 起 Options 页从「7 卡片垂直堆叠」重构为「Sidebar + 主区」,4 大段:语言 / 模型 / 用量 / 高级。
 - 0.2.0 起设计 token 从 v1.0(13 变量)升级到 v2(6 语义色族 × 5 档 shade + 11 档字号 + 6 档圆角 + 5 档阴影 + 11 档间距 + 7 档图标尺寸);warm-craft 家族延续(品牌 brief 明示 override)。
 - 0.2.0 起图标库从 `lucide-react` 切换为手设计 SVG 套件(`src/icons/`,40+ 图标,24×24 viewBox,1.5px stroke,currentColor 单色);零运行时依赖增量。
 - 0.2.0 起状态徽标升级为 `td-badge` v2(图标 + 文字 + 颜色三重指示,WCAG AA)。
 - 0.2.0 起 Popup 与网页状态条按 v2 token 同步重新着色。
 - 0.1.1 起的 header 弹窗开关 / 模型 per-origin 独立 / `[role="banner"]` 选择器扩展全部继承(未回退)。
-- 0.2.x 起翻译子系统按 `TD-2026-026` 7 Layer 升级:SiteProfile 嗅探 8 种 web 架构(SSR / SPA / Streaming SSR 含 RSC / SSG-ISR / PWA-SW / MPA / Islands / Hybrid);Strategy Registry + Dispatcher(委派 fallback 策略,后续按 profile 分支);DOM Extraction 2.0 用 TreeWalker 替代 `querySelectorAll`,加 IntersectionObserver 视口预翻译 200px + async SHA-256 内容哈希;Modern Observation 用 `scheduler.postTask` 替代 `setTimeout` + `AbortController` 取消在途;Translation Memory 4 级缓存 L1 WeakMap / L2 Map / L3 chrome.storage.local / L4 BroadcastChannel;Smart Insertion 3 策略 `adjacent`(默认) / `highlight`(CSS.highlights API) / `range-replace`(Range API);SPA Reset 2.0 加 View Transitions API + `astro:before-swap` 监听 + AbortController 取消在途。零新增运行时依赖;新单测 36 项,总 254 项全过。
+- 0.2.x 起翻译子系统按 `TD-2026-026` 7 Layer 升级:SiteProfile 嗅探 8 种 web 架构(SSR / SPA / Streaming SSR 含 RSC / SSG-ISR / PWA-SW / MPA / Islands / Hybrid);Strategy Registry + Dispatcher(委派 fallback 策略,后续按 profile 分支);DOM Extraction 2.0 用 TreeWalker 替代 `querySelectorAll`,加 IntersectionObserver 视口预翻译 200px + async SHA-256 内容哈希;Modern Observation 用 `scheduler.postTask` 替代 `setTimeout` + `AbortController` 取消在途;当前 Translation Memory 仅在页面运行期间使用 L1 WeakMap / L2 Map，跨标签与持久复用由 Service Worker 管理的加密译文缓存负责（未启用浏览器端 `chrome.storage.local` 或 `BroadcastChannel` 记忆层）;Smart Insertion 3 策略 `adjacent`(默认) / `highlight`(CSS.highlights 源范围装饰,译文仍由 adjacent 纯文本节点显示) / `range-replace`(Range API);SPA Reset 2.0 加 View Transitions API + `astro:before-swap` 监听 + generation 边界取消迟到结果。零新增运行时依赖。
+- 实验性 `highlight` 策略不改变可见译文的纯文本渲染契约；不支持或异常时自动回退 adjacent，并按 source owner 重建/清理聚合范围。
 
-## [0.2.0] - 2026-08-26(已合并到 0.2.x 升级版,未发布)
+## [0.2.0] (已合并到 0.2.x 升级版，未发布草案)
 
 ## [0.1.0] - 2026-08-24(已合并到 0.2.0,未发布)
 
 > ⚠️ 0.1.0 标签从未实际发布,2026-08-26 项目所有者决定跳过此版本,合并入 0.2.0 完整重设计版。下文保留为历史规格摘要,不视为「已对外发布」的功能清单。
 
-首版 `0.1.0` 本地安装版。配套 Git tag 与 GitHub Release 由项目所有者按 `AGENT_DEV.md §5` 单独授权后创建；本仓库在此之前不得声明已"对外发布"。本版不进入 Chrome Web Store、其他商店或自动更新分发。
+首版 `0.1.0` 本地安装版。配套 Git tag 与 GitHub Release 仅在项目所有者明确授权后创建；本仓库在此之前不得声明已“对外发布”。本版不进入 Chrome Web Store、其他商店或自动更新分发。
 
 ### Added
 
@@ -52,11 +75,11 @@ TextDuet 的用户可见变化记录在此文件中。格式参考 [Keep a Chang
 - Popup、Options、用量图和网页状态提示统一为暖纸色、赤陶色与赭石色主题，并同步更新扩展图标；主题只改变界面表现，不改变权限、Key 存储或 Provider 数据流。
 - Popup 支持“当前语言 → 翻译到”语言对配置；目标语言可跟随系统，源语言可自动检测或手动指定。
 - 网页翻译不再注入右下角状态浮层；状态保留在扩展 Popup 中。
-- OpenAI-compatible Provider 支持 SSE 流式响应，已完成段落会在批次结束前增量显示；普通 JSON 响应在同一次请求中回退解析。
+- OpenAI-compatible Provider 支持 SSE 流式响应；响应按 chunk 读取并在完整批次校验后原子显示，普通 JSON 响应在同一次请求中回退解析。
 - 增加“翻译选中文本”右键菜单，选区译文以内联纯文本形式插入并复用本地缓存。
 - 选区译文复用用户配置的译文颜色和可读性安全门；可在 Popup/Options 开关选区快捷图标。
-- 首批翻译采用小批次并与成本预估并行，已完成段落优先实时渲染；语言选择改为共享弹出式控件。
-- 流式批次完成时增加整批幂等回显，兼容缓冲式 SSE 服务，避免进度已完成但页面区域仍为空。
+- 首批翻译采用小批次并与成本预估并行；模型响应完整校验后按批次原子显示，语言选择改为共享弹出式控件。
+- 流式批次完成时增加整批幂等回显，兼容缓冲式 SSE 服务，并避免异常/断流留下部分译文。
 - 页面候选提取覆盖页头、导航标签与页脚正文链接，同时继续排除按钮、表单、代码和隐藏区域。
 - 选区快捷翻译监听 pointer/mouse/touch 结束事件并采用视口固定定位；图标改为简洁的“文A”双语标识，降低页面样式污染和定位抖动。
 - 选区快捷翻译改为默认关闭；用户明确打开开关后才向当前页面按需注入入口，并增强选区稳定检测与多行选区定位。

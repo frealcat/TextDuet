@@ -1,19 +1,26 @@
-name: Website compatibility report
-description: Report missing, incorrect, duplicated, or broken webpage translations.
+name: Website compatibility report / 网站兼容性报告
+description: Report missing, incorrect, duplicated, or broken webpage translations. / 报告网页漏译、误译、重复译文或布局问题。
 title: "[Site] "
 labels:
   - compatibility
+  - needs-triage
 body:
   - type: markdown
     attributes:
       value: |
-        Do not include API keys, private URLs, account information, unpublished text, or page content you cannot share publicly.
+        Report a public, reproducible webpage compatibility problem. For general usage or installation help, use [Discussions](https://github.com/frealcat/TextDuet/discussions).
+
+        请报告公开且可复现的网页兼容性问题。一般使用和安装问题请前往 [Discussions](https://github.com/frealcat/TextDuet/discussions)。
+
+        **Never include API keys, authentication headers, private URLs, account information, unpublished text, page contents, form values, or sensitive screenshots.**
+
+        **不得提交 API Key、认证头、私密 URL、账户信息、未公开文本、网页正文、表单内容或敏感截图。**
 
   - type: input
     id: domain
     attributes:
-      label: Website domain
-      description: Domain only, for example developer.mozilla.org.
+      label: Website domain / 网站域名
+      description: Domain only, for example developer.mozilla.org. / 仅填写域名，例如 developer.mozilla.org。
       placeholder: example.com
     validations:
       required: true
@@ -21,71 +28,112 @@ body:
   - type: input
     id: public_url
     attributes:
-      label: Public example URL
-      description: Optional, but it must work without an account or private access.
+      label: Public example URL (optional) / 公开示例 URL（可选）
+      description: It must work without an account or private access and must not contain tokens. / 必须无需账户或私密权限即可访问，且不得包含令牌。
       placeholder: https://example.com/public-page
 
   - type: dropdown
     id: problem
     attributes:
-      label: Problem type
+      label: Problem type / 问题类型
       options:
-        - Important text is not translated
-        - Navigation, buttons, code, or forms are translated incorrectly
-        - Translation is inserted under the wrong paragraph
-        - Duplicate translations appear
-        - Page layout or interaction breaks
-        - Dynamic content is not translated
-        - Translation is too slow
-        - Other
+        - Important text is not translated / 重要文本未翻译
+        - Navigation, buttons, code, or forms are translated incorrectly / 导航、按钮、代码或表单被错误翻译
+        - Translation is inserted under the wrong paragraph / 译文插入了错误段落下方
+        - Duplicate translations appear / 出现重复译文
+        - Page layout or interaction breaks / 页面布局或交互被破坏
+        - Dynamic content is not translated / 动态内容未翻译
+        - Translation is too slow / 翻译速度过慢
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: page_state
+    attributes:
+      label: Page behavior / 页面类型
+      options:
+        - Static or server-rendered / 静态或服务端渲染
+        - Single-page application / 单页应用
+        - Dynamically loaded or infinite scroll / 动态加载或无限滚动
+        - Unsure / 不确定
     validations:
       required: true
 
   - type: textarea
     id: steps
     attributes:
-      label: Reproduction steps
+      label: Reproduction steps / 复现步骤
       placeholder: |
         1. Open the public page
-        2. Click TextDuet
-        3. Choose ...
+        2. Click TextDuet and choose a target language
+        3. Scroll or interact as described
+
+        1. 打开公开网页
+        2. 点击 TextDuet 并选择目标语言
+        3. 按描述滚动或交互
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: Expected result
+      label: Expected result / 预期结果
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: Actual result
+      label: Actual result / 实际结果
     validations:
       required: true
 
   - type: input
     id: textduet_version
     attributes:
-      label: TextDuet version
-      placeholder: 0.1.0
+      label: TextDuet version / TextDuet 版本
+      placeholder: 0.2.0
     validations:
       required: true
 
   - type: input
     id: chrome_version
     attributes:
-      label: Chrome version
-      placeholder: chrome://version
+      label: Chrome version / Chrome 版本
+      placeholder: 140.0.0000.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_channel
+    attributes:
+      label: Installation channel / 安装渠道
+      options:
+        - Chrome Web Store / Chrome Web Store
+        - GitHub Release ZIP / GitHub Release ZIP
+        - Source build / 源码构建
+        - Other or unknown / 其他或不确定
     validations:
       required: true
 
   - type: checkboxes
+    id: dynamic_content
+    attributes:
+      label: Dynamic content / 动态内容
+      options:
+        - label: The page changes after load, navigation, scrolling, or interaction. / 页面会在加载后、导航、滚动或交互时变化。
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional safe context (optional) / 其他安全信息（可选）
+      description: Share selectors or behavior only when they contain no page text, account data, private URL, or credentials. / 仅在不含网页正文、账户数据、私密 URL 或凭据时提供选择器或行为信息。
+
+  - type: checkboxes
     id: privacy
     attributes:
-      label: Privacy confirmation
+      label: Privacy confirmation / 隐私确认
       options:
-        - label: I removed API keys, private URLs, account data, and unpublished content.
+        - label: I removed API keys, authentication headers, private URLs, account data, unpublished text, page contents, form values, and sensitive screenshots. / 我已移除 API Key、认证头、私密 URL、账户数据、未公开文本、网页正文、表单内容和敏感截图。
           required: true

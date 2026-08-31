@@ -14,7 +14,8 @@ const provider = readProviderEnvironment();
 assert(playwrightEntry, 'PLAYWRIGHT_ENTRY is required');
 assert(chromeExecutable, 'CHROME_EXECUTABLE is required');
 
-const { chromium } = await import(playwrightEntry);
+const playwrightModule = await import(playwrightEntry);
+const { chromium } = playwrightModule.default ?? playwrightModule;
 const targetOrigin = new URL(targetUrl).origin;
 const providerOrigin = new URL(provider.baseUrl).origin;
 const tempRoot = await mkdtemp(resolve('.playwright/browser-profile/visual-site-'));
@@ -208,17 +209,12 @@ async function captureUsageResult(optionsPage, screenshotPath) {
       estimatedCalls: summary.estimatedCalls + Number(record.estimatedCalls || 0),
     }), { recordCount: 0, actualCalls: 0, estimatedCalls: 0 });
   });
-  const chartPixels = await usageCard.locator('.usage-chart canvas').evaluate((canvas) => {
-    const context = canvas.getContext('2d');
-    if (!context) return 0;
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    let visiblePixels = 0;
-    for (let index = 3; index < pixels.length; index += 4) {
-      if (pixels[index] > 0) visiblePixels += 1;
-    }
-    return visiblePixels;
+  const chartPixels = await usageCard.locator('.usage-chart svg').evaluate((svg) => {
+    const paths = Array.from(svg.querySelectorAll('path'));
+    const circles = svg.querySelectorAll('circle').length;
+    return paths.filter((path) => path.getAttribute('d')?.trim()).length * 1_000 + circles;
   });
-  assert(chartPixels > 1_000, 'Usage chart canvas is blank');
+  assert(chartPixels > 1_000, 'Usage chart SVG is blank');
   await usageCard.screenshot({ path: screenshotPath, animations: 'disabled' });
 
   return {
@@ -282,6 +278,9 @@ async function saveProviderSettings(page, settings) {
     });
   }, settings);
   assert(result?.ok, 'Provider settings could not be saved');
+  const consent = await page.evaluate(() =>
+    chrome.runtime.sendMessage({ type: 'CONFIRM_TRANSLATION_CONSENT' }));
+  if (!consent?.isConfirmed) throw new Error('translation consent could not be confirmed');
 }
 
 function trackProviderRequests(browserContext, providerOrigin, requests) {

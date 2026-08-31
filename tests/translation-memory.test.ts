@@ -3,7 +3,6 @@ import { parseHTML } from 'linkedom';
 import {
   bindCachedTranslation,
   TranslationMemory,
-  type BroadcastChannelLike,
 } from '@/src/translator/translation-memory';
 import type { TranslatedBlock } from '@/src/core/contracts';
 
@@ -15,41 +14,11 @@ function makeBlock(text: string): TranslatedBlock {
   return { id: 'b1', translatedText: text };
 }
 
-interface FakeChannel extends BroadcastChannelLike {
-  sent: unknown[];
-  listeners: Set<(event: MessageEvent) => void>;
-}
-
-function makeFakeChannel(): FakeChannel {
-  const listeners = new Set<(event: MessageEvent) => void>();
-  const sent: unknown[] = [];
-  const api: FakeChannel = {
-    sent,
-    listeners,
-    postMessage(message) {
-      sent.push(message);
-    },
-    addEventListener(_type, listener) {
-      listeners.add(listener);
-    },
-    removeEventListener(_type, listener) {
-      listeners.delete(listener);
-    },
-    close() {
-      listeners.clear();
-    },
-  };
-  return api;
-}
-
 function makeMemory(): TranslationMemory {
-  return new TranslationMemory({
-    disableBroadcastChannel: true,
-    storageBackend: null,
-  });
+  return new TranslationMemory();
 }
 
-describe('TranslationMemory (Layer 5)', () => {
+describe('TranslationMemory (page-scoped)', () => {
   it('returns null on a fresh cache', async () => {
     const mem = makeMemory();
     const got = await mem.get('Hello', 'en', 'gpt-4o-mini');
@@ -74,6 +43,28 @@ describe('TranslationMemory (Layer 5)', () => {
     // Read with the same element: should hit L1
     const got = await mem.get('Hello', 'en', 'gpt-4o-mini', el);
     expect(got).toEqual(block);
+  });
+
+  it('does not return a stale L1 translation when the element text changes', async () => {
+    const mem = makeMemory();
+    const doc = makeDocument('<p id="x">Hello</p>');
+    const el = doc.querySelector('#x') as HTMLElement;
+    const hello = makeBlock('你好');
+    await mem.put('Hello', 'zh-CN', 'gpt-4o-mini', hello, el);
+
+    expect(await mem.get('World', 'zh-CN', 'gpt-4o-mini', el)).toBeNull();
+  });
+
+  it('falls back to the matching L2 entry after an element is reused', async () => {
+    const mem = makeMemory();
+    const doc = makeDocument('<p id="x">Hello</p>');
+    const el = doc.querySelector('#x') as HTMLElement;
+    const hello = makeBlock('你好');
+    const world = makeBlock('世界');
+    await mem.put('Hello', 'zh-CN', 'gpt-4o-mini', hello, el);
+    await mem.put('World', 'zh-CN', 'gpt-4o-mini', world);
+
+    expect(await mem.get('World', 'zh-CN', 'gpt-4o-mini', el)).toEqual(world);
   });
 
   it('returns the same translation regardless of which tier serves it', async () => {
@@ -118,32 +109,22 @@ describe('TranslationMemory (Layer 5)', () => {
     expect(got?.translatedText).toBe('Hello world');
   });
 
-  it('broadcasts put events on the supplied channel so peers can hydrate L2', async () => {
-    const channel = makeFakeChannel();
-    const mem = new TranslationMemory({
-      disableBroadcastChannel: false,
-      storageBackend: null,
-      channelFactory: () => channel,
-    });
-    try {
-      await mem.put('Hello', 'en', 'gpt-4o-mini', makeBlock('你好'));
-      expect(channel.sent.length).toBe(1);
-      const payload = channel.sent[0] as { type: string; hash: string; block: TranslatedBlock };
-      expect(payload.type).toBe('put');
-      expect(payload.block.translatedText).toBe('你好');
-    } finally {
-      mem.dispose();
-    }
+  it('does not share a translation with another page-run memory', async () => {
+    const mem = makeMemory();
+    const nextRun = makeMemory();
+    await mem.put('Hello', 'en', 'gpt-4o-mini', makeBlock('你好'));
+    expect(await nextRun.get('Hello', 'en', 'gpt-4o-mini')).toBeNull();
   });
 
-  it('dispose removes channel listeners and closes the channel', () => {
-    const channel = makeFakeChannel();
-    const mem = new TranslationMemory({
-      disableBroadcastChannel: false,
-      storageBackend: null,
-      channelFactory: () => channel,
-    });
+  it('clears content-indexed entries when the page run is disposed', async () => {
+    const mem = makeMemory();
+    const doc = makeDocument('<p id="x">Hello</p>');
+    const el = doc.querySelector('#x') as HTMLElement;
+    await mem.put('Hello', 'en', 'gpt-4o-mini', makeBlock('你好'));
+    await mem.put('Hello', 'en', 'gpt-4o-mini', makeBlock('你好'), el);
     mem.dispose();
-    expect(channel.listeners.size).toBe(0);
+    expect(mem.l2Size).toBe(0);
+    expect(await mem.get('Hello', 'en', 'gpt-4o-mini')).toBeNull();
+    expect(await mem.get('Hello', 'en', 'gpt-4o-mini', el)).toBeNull();
   });
 });

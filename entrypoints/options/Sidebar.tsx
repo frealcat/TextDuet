@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@/src/i18n';
 
 export interface SidebarSection {
   /** 段 id,用作 scroll anchor;`#${id}` 跳转 */
@@ -23,6 +24,7 @@ interface SidebarProps {
  * - < 720px:折叠为顶部抽屉(默认收起,顶部按钮展开)
  */
 export function Sidebar({ sections }: SidebarProps) {
+  const { t } = useTranslation();
   const [activeId, setActiveId] = useState<string>(sections[0]?.id ?? '');
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -71,13 +73,15 @@ export function Sidebar({ sections }: SidebarProps) {
         onClick={() => setDrawerOpen((v) => !v)}
       >
         <span aria-hidden="true">≡</span>
-        <span className="td-sidebar-toggle-label">{drawerOpen ? '收起导航' : '展开导航'}</span>
+        <span className="td-sidebar-toggle-label">
+          {drawerOpen ? t('options.sidebar.collapse') : t('options.sidebar.expand')}
+        </span>
       </button>
 
       <nav
         id="td-sidebar-nav"
         className={`td-sidebar${drawerOpen ? ' td-sidebar--open' : ''}`}
-        aria-label="设置导航"
+        aria-label={t('options.sidebar.aria')}
       >
         <ol className="td-sidebar-list">
           {sections.map((section, index) => {

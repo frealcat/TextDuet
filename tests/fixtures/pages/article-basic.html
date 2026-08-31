@@ -9,9 +9,9 @@
     </style>
   </head>
   <body>
-    <nav aria-label="Primary navigation" data-td-expect="exclude">
-      <a href="/">Home</a>
-      <a href="/topics">Topics</a>
+    <nav aria-label="Primary navigation">
+      <a href="/" data-td-expect="include">Home</a>
+      <a href="/topics" data-td-expect="include">Topics</a>
       <button type="button" data-td-expect="exclude">Sign in</button>
     </nav>
     <main>
@@ -36,6 +36,6 @@
         </table>
       </article>
     </main>
-    <footer><p data-td-expect="exclude">Privacy · Terms · Contact</p></footer>
+    <footer><p data-td-expect="include">Privacy · Terms · Contact</p></footer>
   </body>
 </html>

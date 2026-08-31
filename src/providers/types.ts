@@ -10,6 +10,7 @@ export interface ProviderRequestOptions {
 }
 
 export interface ProviderStreamOptions extends ProviderRequestOptions {
+  /** Called only after the complete response passes envelope/ID validation. */
   onBlock?: (block: TranslatedBlock) => void;
 }
 

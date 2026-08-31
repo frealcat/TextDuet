@@ -4,6 +4,24 @@ import {
   pruneAncestorCandidates,
 } from '@/src/core/translation-planning';
 import { getRuleRootElements, type SiteRule } from './site-rules';
+import {
+  SOURCE_BLOCK_ID_ATTRIBUTE,
+  SOURCE_CLASS,
+  SELECTION_ERROR_CLASS,
+  SELECTION_QUICK_ACTION_CLASS,
+  SELECTION_TRANSLATION_CLASS,
+  TRANSLATION_CLASS,
+} from './page-status';
+
+/**
+ * Reading containers keep their prose candidate even when an inline control
+ * or hidden node is present. The descendant is removed from the text
+ * snapshot, while the semantic boundary preserves the surrounding prose.
+ */
+export const TRANSLATION_SEMANTIC_READING_SELECTOR = [
+  'h1, h2, h3, h4, h5, h6, p, li, blockquote, td, figcaption',
+  'article, [role="article"], [role="listitem"]',
+].join(', ');
 
 export const TRANSLATION_BLOCK_SELECTOR =
   [
@@ -16,8 +34,7 @@ export const TRANSLATION_BLOCK_SELECTOR =
     // Navigation links in header / nav / footer / aside are still
     // collected via the shell-specific selectors below, where the link
     // is the entire block label and a one-word translation is correct.
-    'h1, h2, h3, h4, h5, h6, p, li, blockquote, td, figcaption',
-    'article, [role="article"], [role="listitem"]',
+    TRANSLATION_SEMANTIC_READING_SELECTOR,
     'span, div, section',
     // Navigation and shell copy is useful reading content too. Keep the
     // selector narrow. Interactive controls are excluded independently
@@ -92,14 +109,42 @@ export const TRANSLATION_INTERACTIVE_CONTROL_SELECTOR = [
  * inline code can coexist with readable prose, whereas hidden/control text
  * is never safe to send as part of a parent container.
  */
-const TRANSLATION_NON_READING_DESCENDANT_SELECTOR = [
+export const TRANSLATION_NON_READING_DESCENDANT_SELECTOR = [
   TRANSLATION_INTERACTIVE_CONTROL_SELECTOR,
   '[aria-hidden="true"]',
   '[hidden]',
   '[inert]',
 ].join(', ');
 
+/** TextDuet output is never page-owned source text. Source wrappers are kept
+ * because they contain the original page text needed for bilingual display. */
+const TRANSLATION_OUTPUT_SELECTOR = [
+  `.${TRANSLATION_CLASS}`,
+  `.${SELECTION_TRANSLATION_CLASS}`,
+  `.${SELECTION_ERROR_CLASS}`,
+  `.${SELECTION_QUICK_ACTION_CLASS}`,
+  '#textduet-styles',
+].join(', ');
+
+/** Every node created by the in-page TextDuet runtime, never page content. */
+const TEXTDUET_OWNED_DOM_SELECTOR = [
+  `.${SOURCE_CLASS}`,
+  `.${TRANSLATION_CLASS}`,
+  `.${SELECTION_TRANSLATION_CLASS}`,
+  `.${SELECTION_ERROR_CLASS}`,
+  `.${SELECTION_QUICK_ACTION_CLASS}`,
+].join(', ');
+const TEXTDUET_MANAGED_SOURCE_SELECTOR = `[${SOURCE_BLOCK_ID_ATTRIBUTE}]`;
+
 export const TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR = [
+  // TextDuet's own DOM is intentionally made from generic spans, which are
+  // otherwise valid candidates. A visibility-driven reconciliation scan must
+  // never translate the source wrapper or the translated text again: doing so
+  // recursively inserts a new translation inside each previous translation.
+  // Keep this in the hard self/ancestor exclusion (rather than the generic
+  // non-reading-container set) so the real parent paragraph/link remains a
+  // valid candidate and no genuine navigation label is lost.
+  TEXTDUET_OWNED_DOM_SELECTOR,
   'script',
   'style',
   'noscript',
@@ -127,6 +172,53 @@ export const TRANSLATION_EXCLUDED_ANCESTOR_SELECTOR = [
 
 export interface TranslationDomCandidate extends TranslationBlock {
   element: HTMLElement;
+}
+
+/**
+ * Returns whether a node contains content that must not enter a Provider
+ * request. This is separate from candidate eligibility: semantic containers
+ * can remain eligible while their control/hidden descendants are removed.
+ */
+export function hasTranslationTextExclusions(element: HTMLElement): boolean {
+  try {
+    return element.matches(
+      `${TRANSLATION_NON_READING_DESCENDANT_SELECTOR}, ${TRANSLATION_OUTPUT_SELECTOR}`,
+    ) || element.querySelector(
+      `${TRANSLATION_NON_READING_DESCENDANT_SELECTOR}, ${TRANSLATION_OUTPUT_SELECTOR}`,
+    ) !== null;
+  } catch {
+    // The built-in selectors are static and valid in Chrome. Returning false
+    // here leaves the caller's existing text extractor as the fallback for a
+    // non-standard DOM implementation rather than aborting a full scan.
+    return false;
+  }
+}
+
+/**
+ * Clone a candidate and remove non-reading descendants plus TextDuet output.
+ * The source wrapper itself is intentionally retained: it is the original
+ * page text, not generated output. Callers can safely read `innerText` or
+ * `textContent` from the returned clone without mutating the live page.
+ */
+export function extractReadableText(element: HTMLElement): string {
+  let clone: HTMLElement;
+  try {
+    clone = element.cloneNode(true) as HTMLElement;
+    if (clone.matches(
+      `${TRANSLATION_NON_READING_DESCENDANT_SELECTOR}, ${TRANSLATION_OUTPUT_SELECTOR}`,
+    )) {
+      return '';
+    }
+    clone.querySelectorAll(
+      `${TRANSLATION_NON_READING_DESCENDANT_SELECTOR}, ${TRANSLATION_OUTPUT_SELECTOR}`,
+    ).forEach((node) => node.remove());
+  } catch {
+    // Keep extraction total for lightweight DOM implementations. The caller
+    // can still use the original text callback when cloning/selectors fail.
+    return '';
+  }
+  const innerText = (clone as HTMLElement & { innerText?: string }).innerText;
+  return innerText !== undefined ? innerText : clone.textContent || '';
 }
 
 interface CollectTranslationCandidatesOptions {
@@ -215,9 +307,17 @@ export function collectTranslationCandidates(
         return false;
       }
     }) ?? false;
+    const suppliedText = options.getText(element);
+    // Keep custom source-text callbacks for ordinary nodes, but enforce the
+    // DOM safety boundary whenever generated output, controls, or hidden
+    // descendants are present. This prevents a caller that uses raw
+    // `textContent` from accidentally sending action labels to a Provider.
+    const text = hasTranslationTextExclusions(element)
+      ? extractReadableText(element)
+      : suppliedText;
     const block = planTranslationBlock({
       id: options.getId(element),
-      text: options.getText(element),
+      text,
       // Controls must never become translation candidates, either directly
       // (a <button> in a shell landmark) or indirectly (a bare SPA <div>
       // whose only text is nested in a button). Site-rule inclusion can
@@ -225,7 +325,10 @@ export function collectTranslationCandidates(
       isExcluded: hasMatchingSelfOrAncestor(
         element,
         TRANSLATION_ALWAYS_EXCLUDED_ANCESTOR_SELECTOR,
-      ) || nonReadingContainers.has(element) || (
+      )
+        || hasRenderedSourceBlockAncestor(element)
+        || nonReadingContainers.has(element)
+        || (
         !isExplicitlyIncluded && hasAncestorMatching(element, excludedSelector)
       ),
       isVisible: isVisible(element),
@@ -237,10 +340,35 @@ export function collectTranslationCandidates(
     candidates.map((candidate) => [candidate.element, candidate]),
   );
 
-  return pruneAncestorCandidates(candidates, (candidate) => {
+  // A semantic block can contain direct prose plus inline formatting or
+  // shell links. In that shape, pruning the semantic parent in favour of a
+  // nested span/link would silently drop the parent's direct text. Let the
+  // semantic block cover the whole branch; when it has no direct text, the
+  // existing deepest-candidate pruning below still preserves independent
+  // headings, paragraphs, and badges.
+  const candidatesWithSemanticCoverage = candidates.filter((candidate) => {
     let parent = candidate.element.parentElement;
     while (parent) {
       const parentCandidate = candidatesByElement.get(parent);
+      if (
+        parentCandidate
+        && isSemanticReadingContainer(parent)
+        && hasDirectReadableText(parent)
+      ) {
+        return false;
+      }
+      parent = parent.parentElement;
+    }
+    return true;
+  });
+  const prunableCandidatesByElement = new Map(
+    candidatesWithSemanticCoverage.map((candidate) => [candidate.element, candidate]),
+  );
+
+  return pruneAncestorCandidates(candidatesWithSemanticCoverage, (candidate) => {
+    let parent = candidate.element.parentElement;
+    while (parent) {
+      const parentCandidate = prunableCandidatesByElement.get(parent);
       if (parentCandidate) {
         return parentCandidate;
       }
@@ -248,6 +376,44 @@ export function collectTranslationCandidates(
     }
     return null;
   });
+}
+
+/**
+ * Excludes only framework wrappers whose entire readable text comes from
+ * TextDuet-owned nodes. A rendered generic block may still receive genuine
+ * page children later; those text nodes keep the wrapper eligible (and the
+ * normal ancestor-pruning pass selects the new child), preserving zero-miss
+ * dynamic content behavior.
+ */
+function hasRenderedSourceBlockAncestor(element: HTMLElement): boolean {
+  let ancestor = element.parentElement;
+  while (ancestor) {
+    if (ancestor.matches(TEXTDUET_MANAGED_SOURCE_SELECTOR)) {
+      return !hasPageOwnedText(element);
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return false;
+}
+
+function hasPageOwnedText(element: HTMLElement): boolean {
+  const visit = (node: Node): boolean => {
+    if (node.nodeType === 3) return Boolean(node.nodeValue?.trim());
+    // Avoid relying on a realm-specific global Element (linkedom tests and
+    // embedded documents may not expose it); nodeType plus matches is enough.
+    if (node.nodeType !== 1) return false;
+    const childElement = node as HTMLElement;
+    if (typeof childElement.matches !== 'function') return false;
+    if (childElement.matches(TEXTDUET_OWNED_DOM_SELECTOR)) return false;
+    for (const child of Array.from(node.childNodes)) {
+      if (visit(child)) return true;
+    }
+    return false;
+  };
+  for (const child of Array.from(element.childNodes)) {
+    if (visit(child)) return true;
+  }
+  return false;
 }
 
 function isElementVisible(element: HTMLElement): boolean {
@@ -301,10 +467,11 @@ function hasMatchingSelfOrAncestor(element: HTMLElement, selector: string): bool
 
 /**
  * Generic containers may be valid reading blocks on utility-first SPAs. Mark
- * every ancestor of an interactive or hidden descendant once per scan: their
- * aggregate text would otherwise translate a control label or leak hidden
- * text. Safe semantic siblings (for example a `<p>`) remain candidates after
- * pruning. This one-pass marking avoids a `querySelector` call for every
+ * non-semantic ancestors of an interactive or hidden descendant once per
+ * scan: their aggregate text would otherwise translate a control label or
+ * leak hidden text. Semantic reading boundaries (for example a `<p>` or
+ * `<article>`) remain candidates; their text snapshot strips the unsafe
+ * descendants. This one-pass marking avoids a `querySelector` call for every
  * span/div/section candidate on a large page.
  */
 function collectNonReadingContainers(document: Document): WeakSet<HTMLElement> {
@@ -313,7 +480,12 @@ function collectNonReadingContainers(document: Document): WeakSet<HTMLElement> {
     document.querySelectorAll<HTMLElement>(TRANSLATION_NON_READING_DESCENDANT_SELECTOR).forEach((control) => {
       let parent = control.parentElement;
       while (parent) {
-        containers.add(parent);
+        // A semantic reading element may contain an inline control without
+        // losing the surrounding prose. Generic ancestors remain excluded so
+        // a bare wrapper cannot aggregate and translate the control label.
+        if (!isSemanticReadingContainer(parent)) {
+          containers.add(parent);
+        }
         parent = parent.parentElement;
       }
     });
@@ -323,6 +495,21 @@ function collectNonReadingContainers(document: Document): WeakSet<HTMLElement> {
     // self/ancestor hard exclusion already applied above.
   }
   return containers;
+}
+
+function isSemanticReadingContainer(element: HTMLElement): boolean {
+  try {
+    return element.matches(TRANSLATION_SEMANTIC_READING_SELECTOR);
+  } catch {
+    return false;
+  }
+}
+
+/** Returns true when a semantic candidate owns visible text directly. */
+function hasDirectReadableText(element: HTMLElement): boolean {
+  return Array.from(element.childNodes).some((node) => (
+    node.nodeType === 3 && Boolean(node.nodeValue?.trim())
+  ));
 }
 
 /**
@@ -370,9 +557,16 @@ export function* walkTextCandidates(
     0x1 /* NodeFilter.SHOW_ELEMENT */,
     {
       acceptNode(node) {
-        // Defensive double-check in the generator below; the value we
-        // return here only matters in browsers that honour it.
-        return 0x1 /* FILTER_ACCEPT — let every element through */;
+        // Reject the complete subtree for hard exclusions. The generator
+        // below repeats the check because linkedom historically ignored
+        // FILTER_REJECT, while Chrome uses it to avoid walking large code,
+        // control, hidden, and TextDuet-owned subtrees.
+        return hasMatchingSelfOrAncestor(
+          node as HTMLElement,
+          skipSubtreeSelector,
+        )
+          ? 0x2 /* NodeFilter.FILTER_REJECT */
+          : 0x1 /* NodeFilter.FILTER_ACCEPT */;
       },
     },
   );

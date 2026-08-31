@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   getModelForOrigin,
   getModelsForOrigin,
+  hasCombinedProviderTransition,
+  isSavedApiKeyForOrigin,
   migrateProviderModelsToOriginCache,
   normalizeBaseUrlOrigin,
   switchBaseUrlWithModelCache,
@@ -9,6 +11,51 @@ import {
 } from '@/src/storage/provider-models';
 
 describe('provider-models helpers', () => {
+  describe('isSavedApiKeyForOrigin', () => {
+    it('accepts a saved status for the same origin, including a path change', () => {
+      expect(isSavedApiKeyForOrigin(
+        true,
+        'https://api.example.com',
+        'https://api.example.com/v2',
+      )).toBe(true);
+    });
+
+    it('rejects a status from a different origin', () => {
+      expect(isSavedApiKeyForOrigin(
+        true,
+        'https://api.openai.com',
+        'https://api.deepseek.com',
+      )).toBe(false);
+    });
+
+    it('rejects an absent status or invalid current URL', () => {
+      expect(isSavedApiKeyForOrigin(false, 'https://api.example.com', 'https://api.example.com/v1'))
+        .toBe(false);
+      expect(isSavedApiKeyForOrigin(true, 'https://api.example.com', 'not-a-url'))
+        .toBe(false);
+    });
+  });
+
+  describe('hasCombinedProviderTransition', () => {
+    it('rejects changing origin and key persistence in one save', () => {
+      expect(hasCombinedProviderTransition(
+        { baseUrl: 'https://api.openai.com/v1', apiKeyPersistence: 'session' },
+        { baseUrl: 'https://api.deepseek.com', apiKeyPersistence: 'local' },
+      )).toBe(true);
+    });
+
+    it('allows a path-only origin edit or a mode-only edit', () => {
+      expect(hasCombinedProviderTransition(
+        { baseUrl: 'https://api.example.com/v1', apiKeyPersistence: 'session' },
+        { baseUrl: 'https://api.example.com/v2', apiKeyPersistence: 'local' },
+      )).toBe(false);
+      expect(hasCombinedProviderTransition(
+        { baseUrl: 'https://api.example.com/v1', apiKeyPersistence: 'session' },
+        { baseUrl: 'https://api.example.com/v1', apiKeyPersistence: 'local' },
+      )).toBe(false);
+    });
+  });
+
   describe('normalizeBaseUrlOrigin', () => {
     it('returns the https origin for a valid url', () => {
       expect(normalizeBaseUrlOrigin('https://api.openai.com/v1')).toBe('https://api.openai.com');
@@ -19,6 +66,9 @@ describe('provider-models helpers', () => {
     it('rejects non-https schemes and malformed urls', () => {
       expect(normalizeBaseUrlOrigin('http://api.example.com/v1')).toBeNull();
       expect(normalizeBaseUrlOrigin('not-a-url')).toBeNull();
+      expect(normalizeBaseUrlOrigin('https://user:pass@api.example.com/v1')).toBeNull();
+      expect(normalizeBaseUrlOrigin('https://api.example.com/v1?key=secret')).toBeNull();
+      expect(normalizeBaseUrlOrigin('https://api.example.com/v1#fragment')).toBeNull();
     });
   });
 

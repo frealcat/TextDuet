@@ -1,10 +1,16 @@
 import * as z from 'zod/mini';
 import type { ProviderBalance, ProviderSettings } from '@/src/core/contracts';
 import { getLocalDateKey } from '@/src/core/cost';
+import {
+  readJsonResponseWithLimit,
+  ResponseBodyTooLargeError,
+} from './response-body';
 
 const DEEPSEEK_API_ORIGIN = 'https://api.deepseek.com';
 const DEEPSEEK_BALANCE_API = `${DEEPSEEK_API_ORIGIN}/user/balance`;
 const DEEPSEEK_BALANCE_DOCS = 'https://api-docs.deepseek.com/api/get-user-balance';
+/** The balance envelope is intentionally tiny; reject oversized responses. */
+export const MAX_PROVIDER_BALANCE_RESPONSE_BYTES = 256 * 1024;
 const BalanceAmountSchema = z.string().check(
   z.minLength(1),
   z.maxLength(64),
@@ -53,7 +59,15 @@ export async function fetchProviderBalance(
     throw new Error('DeepSeek 余额接口暂时不可用，请稍后重试');
   }
 
-  const rawBody: unknown = await response.json().catch(() => ({}));
+  const rawBody: unknown = await readJsonResponseWithLimit(
+    response,
+    MAX_PROVIDER_BALANCE_RESPONSE_BYTES,
+  ).catch((error: unknown) => {
+    if (error instanceof ResponseBodyTooLargeError) {
+      throw new Error('余额接口响应超过大小限制');
+    }
+    return {};
+  });
   const parsed = DeepSeekBalanceResponseSchema.safeParse(rawBody);
   if (!parsed.success) {
     throw new Error('余额接口返回格式不正确');

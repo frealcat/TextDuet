@@ -8,17 +8,31 @@ import { resolveSystemPrompt } from '@/src/core/translation-prompt';
 import { resolveTargetLanguage } from '@/src/core/defaults';
 import * as z from 'zod/mini';
 import { fetchWithReliability } from './fetch-with-reliability';
+import {
+  cancelReaderQuietly,
+  readJsonResponseWithLimit as readJsonBodyWithLimit,
+  ResponseBodyTooLargeError,
+} from './response-body';
 import { ProviderStreamError } from './types';
 import type {
   ProviderRequestOptions,
   ProviderTranslationResult,
   TranslationProvider,
 } from './types';
-import { extractCompletedBlocks, parseSsePayload, splitSseLines } from './stream-parser';
+import { parseSsePayload, splitSseLines } from './stream-parser';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_BASE_DELAY_MS = 400;
+/**
+ * A valid batch can contain up to 200 translated blocks. Keep this ceiling
+ * comfortably above that contract while bounding an untrusted Provider's
+ * ability to grow the Service Worker's in-memory stream state.
+ */
+export const MAX_STREAM_RESPONSE_BYTES = 20 * 1024 * 1024;
+export const MAX_STREAM_CONTENT_BYTES = 16 * 1024 * 1024;
+export const MAX_STREAM_BUFFER_BYTES = 1 * 1024 * 1024;
+const STREAM_SIZE_ERROR_MESSAGE = '模型流式响应超过大小限制';
 
 const ChatCompletionResponseSchema = z.object({
   model: z.optional(z.string().check(z.minLength(1), z.maxLength(256))),
@@ -35,8 +49,8 @@ const ChatCompletionResponseSchema = z.object({
   ),
   usage: z.optional(
     z.object({
-      prompt_tokens: z.int().check(z.nonnegative()),
-      completion_tokens: z.int().check(z.nonnegative()),
+      prompt_tokens: z.int().check(z.nonnegative(), z.maximum(1_000_000_000)),
+      completion_tokens: z.int().check(z.nonnegative(), z.maximum(1_000_000_000)),
     }),
   ),
 });
@@ -109,7 +123,12 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
       throw new Error(describeHttpError(response.status));
     }
 
-    const rawPayload: unknown = await response.json().catch(() => ({}));
+    const rawPayload: unknown = await readJsonBodyWithLimit(response, MAX_STREAM_RESPONSE_BYTES).catch((error: unknown) => {
+      if (error instanceof ResponseBodyTooLargeError) {
+        throw new ProviderStreamError(STREAM_SIZE_ERROR_MESSAGE);
+      }
+      return {};
+    });
     const payloadResult = ChatCompletionResponseSchema.safeParse(rawPayload);
     if (!payloadResult.success) {
       throw new Error('模型接口返回的响应格式不正确');
@@ -169,12 +188,19 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
     if (!response.ok) throw new Error(describeHttpError(response.status));
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.toLowerCase().includes('text/event-stream')) {
-      const rawPayload: unknown = await response.json().catch(() => ({}));
+      const rawPayload: unknown = await readJsonBodyWithLimit(response, MAX_STREAM_RESPONSE_BYTES).catch((error: unknown) => {
+        if (error instanceof ResponseBodyTooLargeError) {
+          throw new ProviderStreamError(STREAM_SIZE_ERROR_MESSAGE);
+        }
+        return {};
+      });
       const parsed = ChatCompletionResponseSchema.safeParse(rawPayload);
       if (!parsed.success) throw new Error('模型接口返回的响应格式不正确');
       const content = parsed.data.choices?.[0]?.message?.content;
       if (!content) throw new Error('模型没有返回可用的翻译内容');
       const blocks = parseTranslatedBlocks(content, request);
+      // Emit only after the complete response has passed validation. A
+      // malformed JSON envelope must never leave a partially rendered page.
       blocks.forEach((block) => options.onBlock?.(block));
       return {
         blocks,
@@ -185,17 +211,22 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
     }
     if (!response.body) throw new Error('模型服务未返回可读取的流');
     const reader = response.body.getReader();
-    const cancelStream = () => { void reader.cancel(); };
+    const cancelStream = () => {
+      // Abort listeners cannot await. Keep cancellation rejection out of the
+      // unhandled-rejection queue while the main reader loop observes abort.
+      void cancelReaderQuietly(reader);
+    };
     options.signal?.addEventListener('abort', cancelStream, { once: true });
     const decoder = new TextDecoder();
-    const expectedIds = new Set(request.blocks.map((block) => block.id));
-    const emittedIds = new Set<string>();
     let content = '';
     let buffer = '';
     let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
     let model = settings.model;
     let streamDone = false;
+    let responseBytes = 0;
+    let contentBytes = 0;
     const consumeEvent = (event: string) => {
+      assertStreamBufferSize(event, usage);
       const payload = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
       if (!payload) return;
       const parsed = (() => {
@@ -208,27 +239,46 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
       if (parsed.done) { streamDone = true; return; }
       if (parsed.model) model = parsed.model;
       if (parsed.content) {
-        content += parsed.content;
-        for (const block of extractCompletedBlocks(content, expectedIds, emittedIds)) {
-          emittedIds.add(block.id);
-          options.onBlock?.(block);
+        contentBytes += utf8ByteLength(parsed.content);
+        if (contentBytes > MAX_STREAM_CONTENT_BYTES) {
+          throw new ProviderStreamError(STREAM_SIZE_ERROR_MESSAGE, usageToModelUsage(usage));
         }
+        content += parsed.content;
+        // Do not emit incremental objects here. The outer envelope and its
+        // exact ID set are validated together below before any caller sees a
+        // block. This makes streaming delivery transactional at the DOM
+        // boundary while retaining the streaming transport.
       }
       if (parsed.usage) usage = parsed.usage;
     };
     try {
       while (true) {
         const chunk = await reader.read();
+        responseBytes += chunk.value?.byteLength ?? 0;
+        if (responseBytes > MAX_STREAM_RESPONSE_BYTES) {
+          throw new ProviderStreamError(STREAM_SIZE_ERROR_MESSAGE, usageToModelUsage(usage));
+        }
         buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
         const split = splitSseLines(buffer);
         buffer = split.remainder;
-        split.events.forEach(consumeEvent);
+        if (utf8ByteLength(buffer) > MAX_STREAM_BUFFER_BYTES) {
+          throw new ProviderStreamError(STREAM_SIZE_ERROR_MESSAGE, usageToModelUsage(usage));
+        }
+        for (const event of split.events) {
+          consumeEvent(event);
+          if (streamDone) break;
+        }
+        if (streamDone) break;
         if (chunk.done) break;
       }
-      if (buffer.trim()) consumeEvent(buffer);
+      // Flush a UTF-8 code point split across the final chunk before parsing
+      // the last SSE event.
+      buffer += decoder.decode();
+      if (!streamDone && buffer.trim()) consumeEvent(buffer);
       if (options.signal?.aborted) throw new Error('已停止翻译');
       if (!streamDone) throw new Error('模型流式响应未完整结束');
       const blocks = parseTranslatedBlocks(content, request);
+      blocks.forEach((block) => options.onBlock?.(block));
       return {
         blocks,
         model,
@@ -241,6 +291,8 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
         ? '已停止翻译'
         : error instanceof Error && error.message.includes('未完整结束')
           ? error.message
+          : error instanceof Error && error.message === STREAM_SIZE_ERROR_MESSAGE
+            ? error.message
           : '模型流式响应格式无效';
       throw new ProviderStreamError(
         safeMessage,
@@ -248,6 +300,10 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
       );
     } finally {
       options.signal?.removeEventListener('abort', cancelStream);
+      // Stop a Provider that keeps sending data after [DONE] or after a size
+      // violation, and release the reader lock on every exit path.
+      await cancelReaderQuietly(reader);
+      reader.releaseLock();
     }
   }
 
@@ -267,6 +323,27 @@ export class OpenAiCompatibleProvider implements TranslationProvider {
       options,
     );
   }
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function assertStreamBufferSize(
+  value: string,
+  usage?: { prompt_tokens: number; completion_tokens: number },
+): void {
+  if (utf8ByteLength(value) > MAX_STREAM_BUFFER_BYTES) {
+    throw new ProviderStreamError(STREAM_SIZE_ERROR_MESSAGE, usageToModelUsage(usage));
+  }
+}
+
+function usageToModelUsage(
+  usage: { prompt_tokens: number; completion_tokens: number } | undefined,
+): import('@/src/core/contracts').ModelUsage | undefined {
+  return usage
+    ? { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens, kind: 'actual' }
+    : undefined;
 }
 
 function normalizePositiveInteger(value: number | undefined, fallback: number): number {

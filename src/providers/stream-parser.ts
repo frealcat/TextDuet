@@ -1,5 +1,29 @@
 import type { TranslatedBlock } from '@/src/core/contracts';
 import { TranslatedBlockSchema } from '@/src/core/schemas';
+import * as z from 'zod/mini';
+
+const StreamUsageShapeSchema = z.object({
+  prompt_tokens: z.optional(z.number()),
+  completion_tokens: z.optional(z.number()),
+});
+
+const StreamChoiceSchema = z.object({
+  delta: z.optional(z.object({
+    content: z.optional(z.nullable(z.string().check(z.maxLength(64_000)))),
+  })),
+  message: z.optional(z.object({
+    content: z.optional(z.nullable(z.string().check(z.maxLength(64_000)))),
+  })),
+});
+
+// Provider SSE envelopes legitimately carry provider-specific metadata. The
+// schema validates every field we consume while allowing unknown metadata to
+// remain harmless and ignored.
+const StreamPayloadSchema = z.object({
+  model: z.optional(z.string().check(z.minLength(1), z.maxLength(256))),
+  choices: z.optional(z.array(StreamChoiceSchema)),
+  usage: z.optional(z.nullable(StreamUsageShapeSchema)),
+});
 
 export interface ParsedStreamEvent {
   content?: string;
@@ -10,15 +34,22 @@ export interface ParsedStreamEvent {
 
 export function parseSsePayload(payload: string): ParsedStreamEvent {
   if (payload.trim() === '[DONE]') return { done: true };
-  const value = JSON.parse(payload) as {
-    choices?: Array<{ delta?: { content?: string | null }; message?: { content?: string | null } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
-  };
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(payload);
+  } catch {
+    throw new Error('模型流式响应格式无效');
+  }
+  const parsed = StreamPayloadSchema.safeParse(decoded);
+  if (!parsed.success) throw new Error('模型流式响应格式无效');
+  const value = parsed.data;
   const choice = value.choices?.[0];
-  const model = typeof (value as { model?: unknown }).model === 'string' ? (value as { model: string }).model : undefined;
+  const model = value.model;
   const promptTokens = value.usage?.prompt_tokens;
   const completionTokens = value.usage?.completion_tokens;
-  const usage = Number.isInteger(promptTokens) && Number.isInteger(completionTokens)
+  const usage = Number.isSafeInteger(promptTokens) && Number.isSafeInteger(completionTokens)
+    && (promptTokens as number) >= 0 && (completionTokens as number) >= 0
+    && (promptTokens as number) <= 1_000_000_000 && (completionTokens as number) <= 1_000_000_000
     ? { prompt_tokens: promptTokens as number, completion_tokens: completionTokens as number }
     : undefined;
   return { model, content: choice?.delta?.content ?? choice?.message?.content ?? undefined, usage, done: false };

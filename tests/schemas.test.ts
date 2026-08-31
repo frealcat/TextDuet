@@ -3,6 +3,7 @@ import {
   parseOfficialModelPricing,
   parseCompatibilityDiagnostic,
   parseCompatibilityPageSnapshot,
+  parseI18nBatchTranslationResult,
   parseProviderBalance,
   parsePublicProviderSettings,
   parseRuntimeMessage,
@@ -277,6 +278,71 @@ describe('runtime schemas', () => {
     ).toThrow('扩展消息格式无效');
   });
 
+  it('bounds trusted i18n batches by key and character count', () => {
+    const base = {
+      type: 'TRANSLATE_I18N_BATCH' as const,
+      targetTag: 'fr-FR',
+      targetLocale: 'Français',
+    };
+    expect(parseRuntimeMessage({ ...base, sourceBatch: { 'ui.title': 'Title' } }))
+      .toMatchObject({ type: 'TRANSLATE_I18N_BATCH' });
+    expect(() => parseRuntimeMessage({
+      ...base,
+      sourceBatch: Object.fromEntries(Array.from({ length: 51 }, (_, index) => [`k${index}`, 'v'])),
+    })).toThrow('扩展消息格式无效');
+    expect(() => parseRuntimeMessage({
+      ...base,
+      sourceBatch: { [`k${'x'.repeat(128)}`]: 'v' },
+    })).toThrow('扩展消息格式无效');
+    expect(() => parseRuntimeMessage({
+      ...base,
+      sourceBatch: { key: 'x'.repeat(4_001) },
+    })).toThrow('扩展消息格式无效');
+    expect(() => parseRuntimeMessage({
+      ...base,
+      sourceBatch: { first: 'x'.repeat(32_000), second: 'y'.repeat(32_000) },
+    })).toThrow('扩展消息格式无效');
+  });
+
+  it('bounds untrusted i18n response dictionaries', () => {
+    expect(parseI18nBatchTranslationResult({
+      ok: true,
+      translations: { 'ui.title': 'Translated title' },
+    })).toMatchObject({ ok: true });
+    expect(() => parseI18nBatchTranslationResult({
+      ok: true,
+      translations: Object.fromEntries(Array.from({ length: 51 }, (_, index) => [`k${index}`, 'v'])),
+    })).toThrow('扩展返回的 i18n 翻译结果格式无效');
+    expect(() => parseI18nBatchTranslationResult({
+      ok: true,
+      translations: { [`k${'x'.repeat(128)}`]: 'v' },
+    })).toThrow('扩展返回的 i18n 翻译结果格式无效');
+    expect(() => parseI18nBatchTranslationResult({
+      ok: true,
+      translations: { key: 'x'.repeat(16_001) },
+    })).toThrow('扩展返回的 i18n 翻译结果格式无效');
+    expect(() => parseI18nBatchTranslationResult({
+      ok: true,
+      model: 'm'.repeat(257),
+    })).toThrow('扩展返回的 i18n 翻译结果格式无效');
+    expect(() => parseI18nBatchTranslationResult({
+      ok: true,
+      translations: { first: 'x'.repeat(32_000), second: 'y'.repeat(32_000) },
+    })).toThrow('扩展返回的 i18n 翻译结果格式无效');
+
+    const prototypePayload = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(prototypePayload, '__proto__', {
+      value: 'must be rejected',
+      enumerable: true,
+    });
+    const parsedPrototypePayload = parseI18nBatchTranslationResult({
+      ok: true,
+      translations: prototypePayload,
+    });
+    expect(Object.hasOwn(Object.prototype, 'polluted')).toBe(false);
+    expect(Object.keys(parsedPrototypePayload.translations ?? {})).not.toContain('__proto__');
+  });
+
   it('rejects insecure Provider URLs and incomplete saved settings', () => {
     expect(() =>
       parseRuntimeMessage({
@@ -284,6 +350,16 @@ describe('runtime schemas', () => {
         settings: { ...validSettings, baseUrl: 'http://api.example.com', model: '' },
       }),
     ).toThrow('扩展消息格式无效');
+    for (const baseUrl of [
+      'https://user:password@api.example.com/v1',
+      'https://api.example.com/v1?token=secret',
+      'https://api.example.com/v1#fragment',
+    ]) {
+      expect(() => parseRuntimeMessage({
+        type: 'SAVE_PROVIDER_SETTINGS',
+        settings: { ...validSettings, baseUrl },
+      })).toThrow('扩展消息格式无效');
+    }
   });
 
   it('rejects an API Key leaked into public settings', () => {

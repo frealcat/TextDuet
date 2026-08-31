@@ -13,7 +13,26 @@ import {
   resolveChatCompletionsUrl,
   resolveProviderSpecificRequestOptions,
 } from './openai-compatible';
+import {
+  readJsonResponseWithLimit,
+  ResponseBodyTooLargeError,
+} from './response-body';
 import type { ProviderSettings } from '@/src/core/contracts';
+import * as z from 'zod/mini';
+
+/** Bounds the complete non-streaming model envelope held by the worker. */
+export const MAX_FREEFORM_RESPONSE_BYTES = 4 * 1024 * 1024;
+
+const FreeformResponseSchema = z.object({
+  model: z.optional(z.string().check(z.minLength(1), z.maxLength(256))),
+  choices: z.array(z.object({
+    message: z.optional(z.object({ content: z.optional(z.nullable(z.string())) })),
+  })).check(z.minLength(1), z.maxLength(20)),
+  usage: z.optional(z.object({
+    prompt_tokens: z.int().check(z.nonnegative(), z.maximum(1_000_000_000)),
+    completion_tokens: z.int().check(z.nonnegative(), z.maximum(1_000_000_000)),
+  })),
+});
 
 export interface FreeformCompletionRequest {
   system: string;
@@ -99,14 +118,23 @@ export async function requestFreeformCompletion(
     );
   }
 
-  const raw: unknown = await response.json().catch(() => ({}));
-  const choices = (raw as { choices?: Array<{ message?: { content?: string } }> }).choices;
-  const content = choices?.[0]?.message?.content;
+  const raw: unknown = await readJsonResponseWithLimit(
+    response,
+    MAX_FREEFORM_RESPONSE_BYTES,
+  ).catch((error: unknown) => {
+    if (error instanceof ResponseBodyTooLargeError) {
+      throw new FreeformCompletionError('模型接口响应超过大小限制');
+    }
+    return {};
+  });
+  const parsed = FreeformResponseSchema.safeParse(raw);
+  if (!parsed.success) throw new FreeformCompletionError('模型接口返回的响应格式不正确');
+  const content = parsed.data.choices[0]?.message?.content;
   if (typeof content !== 'string' || content.length === 0) {
     throw new FreeformCompletionError('模型没有返回可用的内容');
   }
-  const usage = (raw as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
-  const model = (raw as { model?: string }).model || settings.model;
+  const usage = parsed.data.usage;
+  const model = parsed.data.model || settings.model;
   return {
     content,
     model,

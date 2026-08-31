@@ -14,7 +14,7 @@ import {
   parseProviderBalance,
   parseUsageHistoryDashboard,
 } from '@/src/core/schemas';
-import { t } from '@/src/i18n';
+import { useTranslation } from '@/src/i18n';
 
 // Charting is only needed after a local usage history with actual data has
 // loaded. Keep it out of the Options startup chunk so opening settings to
@@ -36,6 +36,7 @@ interface UsageDashboardCardProps {
 }
 
 export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDashboardCardProps) {
+  const { t } = useTranslation();
   const [history, setHistory] = useState<UsageHistoryDashboard | null>(null);
   const [officialPricing, setOfficialPricing] = useState<OfficialModelPricing>({
     status: 'unavailable',
@@ -85,12 +86,12 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
         (series) => getModelSeriesKey(series) === current,
       ) ? current : getModelSeriesKey(parsedHistory.models[0]));
     } catch {
-      setStatus('读取本地 token 用量失败，请重新加载扩展后重试');
+      setStatus(t('usage.status.readFailed'));
     }
   }
 
   async function clearLedger(): Promise<void> {
-    if (!window.confirm('确定清空所有本地用量记录吗？价格与预算配置会保留。')) return;
+    if (!window.confirm(t('usage.confirm.clear'))) return;
     setBusy(true);
     setStatus('');
     try {
@@ -98,11 +99,11 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
         type: 'CLEAR_USAGE_LEDGER',
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
-      if (!result.ok) throw new Error(result.message || '清空本地用量失败');
-      setStatus(result.message || '本地用量记录已清空');
+      if (!result.ok) throw new Error();
+      setStatus(t('usage.status.cleared'));
       await refreshHistory();
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : '清空本地用量失败');
+    } catch {
+      setStatus(t('usage.status.clearFailed'));
     } finally {
       setBusy(false);
     }
@@ -119,17 +120,19 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
       try {
         balance = parseProviderBalance(rawBalance);
       } catch {
-        const result = parseOperationResult(rawBalance);
-        throw new Error(result.message || '查询 DeepSeek 余额失败');
+        parseOperationResult(rawBalance);
+        throw new Error();
       }
       if (balance.status === 'unsupported') {
-        throw new Error('请先保存 DeepSeek 官方 API 配置');
+        setProviderBalance({ status: 'unsupported' });
+        setStatus(t('usage.status.balanceConfigRequired'));
+        return;
       }
       setProviderBalance(balance);
-      setStatus('DeepSeek 余额已更新');
-    } catch (error) {
+      setStatus(t('usage.status.balanceUpdated'));
+    } catch {
       setProviderBalance({ status: 'unsupported' });
-      setStatus(error instanceof Error ? error.message : '查询 DeepSeek 余额失败');
+      setStatus(t('usage.status.balanceFailed'));
     } finally {
       setBalanceBusy(false);
     }
@@ -149,19 +152,18 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
         </div>
         <span className="badge">
           <ChartLineIcon size={12} />
-          最近 60 天
+          {t('usage.section.badge')}
         </span>
       </div>
 
       <p className="cost-disclaimer">
-        只统计 Provider 响应返回的实际输入、输出 token；记录保存在本机并滚动保留最近 60 天，
-        不读取或替代厂商账单。
+        {t('usage.disclaimer')}
       </p>
 
-      <div className="usage-total-grid" aria-label={t('最近 60 天 token 汇总')}>
-        <UsageTotal label="输入 token" value={history?.totalInputTokens || 0} />
-        <UsageTotal label="输出 token" value={history?.totalOutputTokens || 0} />
-        <UsageTotal label="总计 token" value={total} />
+      <div className="usage-total-grid" aria-label={t('usage.totalGrid.aria')}>
+        <UsageTotal label={t('usage.total.inputLabel')} value={history?.totalInputTokens || 0} />
+        <UsageTotal label={t('usage.total.outputLabel')} value={history?.totalOutputTokens || 0} />
+        <UsageTotal label={t('usage.total.totalLabel')} value={total} />
       </div>
 
       {!history ? (
@@ -174,7 +176,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
         <div className="model-usage-dashboard">
           <div className="model-usage-toolbar">
             <span>{t('usage.toolbar.label')}</span>
-            <div className="model-filter-list" role="group" aria-label={t('选择用量模型')}>
+            <div className="model-filter-list" role="group" aria-label={t('usage.modelFilter.aria')}>
               {history.models.map((series) => {
                 const key = getModelSeriesKey(series);
                 return (
@@ -196,13 +198,15 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
               <UsageHistoryChart dashboard={history} series={selectedSeries} />
             </Suspense>
           )}
-          <div className="model-usage-list" aria-label={t('各模型最近 60 天 token 汇总')}>
+          <div className="model-usage-list" aria-label={t('usage.modelList.aria')}>
             {history.models.map((series) => (
               <div key={getModelSeriesKey(series)}>
                 <strong>{series.model}</strong>
-                <span>输入 {formatTokens(series.totalInputTokens)}</span>
-                <span>输出 {formatTokens(series.totalOutputTokens)}</span>
-                <span>合计 {formatTokens(series.totalInputTokens + series.totalOutputTokens)}</span>
+                <span>{t('usage.modelList.input', { tokens: formatTokens(series.totalInputTokens) })}</span>
+                <span>{t('usage.modelList.output', { tokens: formatTokens(series.totalOutputTokens) })}</span>
+                <span>{t('usage.modelList.total', {
+                  tokens: formatTokens(series.totalInputTokens + series.totalOutputTokens),
+                })}</span>
               </div>
             ))}
           </div>
@@ -212,15 +216,17 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
       {officialPricing.status === 'available' && (
         <div className="pricing-reference">
           <div>
-            <strong>{officialPricing.providerLabel} 官方模型价格</strong>
+            <strong>{t('usage.pricing.title', { provider: officialPricing.providerLabel })}</strong>
             <span>
-              输入 {formatPrice(officialPricing.inputPerMillion)} · 输出{' '}
-              {formatPrice(officialPricing.outputPerMillion)} / 百万 token · 查询于{' '}
-              {officialPricing.checkedAt}
+              {t('usage.pricing.summary', {
+                input: formatPrice(officialPricing.inputPerMillion),
+                output: formatPrice(officialPricing.outputPerMillion),
+                date: officialPricing.checkedAt,
+              })}
             </span>
           </div>
           <a href={officialPricing.sourceUrl} target="_blank" rel="noreferrer">
-            核对来源
+            {t('usage.pricing.source')}
             <ExternalLinkIcon size={14} />
           </a>
         </div>
@@ -243,30 +249,35 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
                 className={balanceBusy ? 'spin' : undefined}
                 size={14}
               />
-              {balanceBusy ? '查询中…' : '查询余额'}
+              {balanceBusy ? t('usage.balance.refreshing') : t('usage.balance.refresh')}
             </button>
           </div>
           {providerBalance.status === 'available' ? (
             <>
               <div className="balance-status-row">
                 <span className={providerBalance.isAvailable ? 'badge success' : 'badge warning'}>
-                  {providerBalance.isAvailable ? '余额可用' : '余额不足'}
+                  {providerBalance.isAvailable
+                    ? t('usage.balance.available')
+                    : t('usage.balance.insufficient')}
                 </span>
-                <span>查询于 {providerBalance.checkedAt}</span>
+                <span>{t('usage.balance.checkedAt', { date: providerBalance.checkedAt })}</span>
               </div>
               <div className="balance-list">
                 {providerBalance.balances.map((balance) => (
                   <div key={balance.currency}>
-                    <span>{balance.currency} 可用余额</span>
+                    <span>{t('usage.balance.listItem', { currency: balance.currency })}</span>
                     <strong>{balance.currency} {balance.totalBalance}</strong>
                     <small>
-                      充值 {balance.toppedUpBalance} · 赠送 {balance.grantedBalance}
+                      {t('usage.balance.topupGranted', {
+                        topup: balance.toppedUpBalance,
+                        granted: balance.grantedBalance,
+                      })}
                     </small>
                   </div>
                 ))}
               </div>
               <a href={providerBalance.sourceUrl} target="_blank" rel="noreferrer">
-                官方余额接口
+                {t('usage.balance.officialLink')}
                 <ExternalLinkIcon size={14} />
               </a>
             </>
@@ -280,7 +291,7 @@ export function UsageDashboardCard({ baseUrl, model, refreshKey, id }: UsageDash
       <div className="card-actions">
         <button className="danger-text-button" type="button" onClick={clearLedger} disabled={busy}>
           <TrashIcon size={14} />
-          {busy ? '处理中…' : '清空本地用量'}
+          {busy ? t('usage.action.processing') : t('usage.action.clear')}
         </button>
       </div>
     </section>

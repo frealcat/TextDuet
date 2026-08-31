@@ -10,7 +10,8 @@ const outputDir = resolve(process.env.TEXTDUET_BILLING_OUTPUT_DIR || 'output/pla
 assert(playwrightEntry, 'PLAYWRIGHT_ENTRY is required');
 assert(chromeExecutable, 'CHROME_EXECUTABLE is required');
 
-const { chromium } = await import(playwrightEntry);
+const playwrightModule = await import(playwrightEntry);
+const { chromium } = playwrightModule.default ?? playwrightModule;
 const tempRoot = await mkdtemp(resolve('.playwright/browser-profile/billing-'));
 const desktopScreenshot = resolve(outputDir, 'usage-balance-desktop.png');
 const narrowScreenshot = resolve(outputDir, 'usage-balance-narrow.png');
@@ -45,17 +46,12 @@ try {
   assert.deepEqual(totals, ['1,340', '700', '2,040']);
   assert.equal(await countUsageRecords(page), 2, 'Retention cleanup did not remove stale data');
 
-  const chartPixels = await page.locator('.usage-chart canvas').evaluate((canvas) => {
-    const context2d = canvas.getContext('2d');
-    if (!context2d) return 0;
-    const pixels = context2d.getImageData(0, 0, canvas.width, canvas.height).data;
-    let visiblePixels = 0;
-    for (let index = 3; index < pixels.length; index += 4) {
-      if (pixels[index] > 0) visiblePixels += 1;
-    }
-    return visiblePixels;
+  const chartPixels = await page.locator('.usage-chart svg').evaluate((svg) => {
+    const paths = Array.from(svg.querySelectorAll('path'));
+    const circles = svg.querySelectorAll('circle').length;
+    return paths.filter((path) => path.getAttribute('d')?.trim()).length * 1_000 + circles;
   });
-  assert(chartPixels > 1_000, 'Token chart canvas is unexpectedly blank');
+  assert(chartPixels > 1_000, 'Token chart SVG is unexpectedly blank');
 
   await installBalanceMock(worker);
   const balanceButton = page.getByRole('button', { name: '查询余额' });

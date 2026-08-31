@@ -58,7 +58,7 @@ export function LanguageSelector({
       </RadioGroup.Item>
       <RadioGroup.Item className="radio-card" value="zh-CN" type="button">
         <span className="choice-icon" aria-hidden="true" lang="zh-CN">
-          中
+          {t('language.option.zh-CN.shortLabel')}
         </span>
         <span className="radio-copy">
           <strong>{t('language.option.zh-CN.label')}</strong>

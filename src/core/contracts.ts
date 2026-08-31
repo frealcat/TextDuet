@@ -23,6 +23,8 @@ import type {
   TranslationEstimateResponseSchema,
   TranslationCacheBatchSchema,
   TranslationCacheDashboardSchema,
+  TranslationConsentStatusSchema,
+  VaultStatusSchema,
   TranslationBlockSchema,
   TodayUsageSummarySchema,
   UsageHistoryDashboardSchema,
@@ -63,3 +65,5 @@ export type CompatibilityPageSnapshot = z.infer<typeof CompatibilityPageSnapshot
 export type CompatibilityDiagnostic = z.infer<typeof CompatibilityDiagnosticSchema>;
 export type PageTranslationState = z.infer<typeof PageTranslationStateSchema>;
 export type TranslationStreamEvent = z.infer<typeof TranslationStreamEventSchema>;
+export type VaultStatus = z.infer<typeof VaultStatusSchema>;
+export type TranslationConsentStatus = z.infer<typeof TranslationConsentStatusSchema>;

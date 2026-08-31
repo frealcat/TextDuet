@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import type { UsageHistoryDashboard, UsageModelSeries } from '@/src/core/contracts';
 import { formatTokenAxisValue, getTokenAxisScale } from '@/src/core/usage-history';
 import { t } from '@/src/i18n';
@@ -41,22 +41,6 @@ const HOVER_RADIUS = 5;
  * the tokens are not present (tests, headless rendering).
  */
 export function UsageHistoryChartSvg({ dashboard, series }: UsageHistoryChartSvgProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(VIEWBOX_WIDTH);
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return undefined;
-    const resize = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const next = entry.contentRect.width;
-        if (next > 0) setWidth(next);
-      }
-    });
-    resize.observe(element);
-    return () => resize.disconnect();
-  }, []);
-
   const values = useMemo(
     () => series.points.flatMap((point) => [point.inputTokens, point.outputTokens]),
     [series],
@@ -95,14 +79,19 @@ export function UsageHistoryChartSvg({ dashboard, series }: UsageHistoryChartSvg
   );
 
   return (
-    <div ref={containerRef} className="usage-chart">
+    <div className="usage-chart">
       <svg
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         preserveAspectRatio="none"
-        width={width}
+        width="100%"
         height={VIEWBOX_HEIGHT}
+        style={{ display: 'block', maxWidth: '100%' }}
         role="img"
-        aria-label={`${series.model} 最近 ${dashboard.days} 天输入和输出 token 用量折线图，纵轴单位为 ${scale.axisName}`}
+        aria-label={t('usage.chart.ariaLabel', {
+          model: series.model,
+          days: dashboard.days,
+          axisName: scale.axisName,
+        })}
       >
         {/* Horizontal grid lines + Y-axis tick labels. */}
         {yAxisTicks.map((tick) => (

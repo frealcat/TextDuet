@@ -5,7 +5,7 @@ import {
   parseOperationResult,
   parseTranslationCacheDashboard,
 } from '@/src/core/schemas';
-import { t } from '@/src/i18n';
+import { useTranslation } from '@/src/i18n';
 
 interface CacheSettingsCardProps {
   /** Optional DOM id, used by sidebar scroll anchors (TD-2026-025 P2). */
@@ -13,6 +13,7 @@ interface CacheSettingsCardProps {
 }
 
 export function CacheSettingsCard({ id }: CacheSettingsCardProps = {}) {
+  const { t } = useTranslation();
   const [dashboard, setDashboard] = useState<TranslationCacheDashboard | null>(null);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -28,12 +29,12 @@ export function CacheSettingsCard({ id }: CacheSettingsCardProps = {}) {
       } satisfies RuntimeMessage);
       setDashboard(parseTranslationCacheDashboard(rawDashboard));
     } catch {
-      setStatus('读取本地翻译缓存失败，请重新加载扩展后重试');
+      setStatus(t('cache.status.readFailed'));
     }
   }
 
   async function clearCache(): Promise<void> {
-    if (!window.confirm('确定清空所有本地译文缓存吗？模型配置和用量账本会保留。')) {
+    if (!window.confirm(t('cache.confirm.clear'))) {
       return;
     }
 
@@ -45,12 +46,12 @@ export function CacheSettingsCard({ id }: CacheSettingsCardProps = {}) {
       } satisfies RuntimeMessage);
       const result = parseOperationResult(rawResult);
       if (!result.ok) {
-        throw new Error(result.message || '清空本地翻译缓存失败');
+        throw new Error(result.message || t('cache.status.clearFailed'));
       }
-      setStatus(result.message || '本地翻译缓存已清空');
+      setStatus(result.message || t('cache.status.cleared'));
       await refreshDashboard();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '清空本地翻译缓存失败');
+      setStatus(error instanceof Error ? error.message : t('cache.status.clearFailed'));
     } finally {
       setBusy(false);
     }
@@ -69,29 +70,29 @@ export function CacheSettingsCard({ id }: CacheSettingsCardProps = {}) {
         </div>
         <span className="badge">
           <DatabaseIcon size={12} />
-          仅保存在本机
+          {t('cache.section.badge')}
         </span>
       </div>
 
       <p className="cost-disclaimer">
-        相同文本、语言、模型和提示词优先复用本地译文，减少重复等待和模型费用。缓存不包含 API Key 或网页 URL。
+        {t('cache.disclaimer')}
       </p>
 
       <div className="cache-summary" aria-live="polite">
         <div>
           <span>{t('cache.summary.entries')}</span>
-          <strong>{dashboard ? dashboard.entryCount : '读取中…'}</strong>
+          <strong>{dashboard ? dashboard.entryCount : t('cache.summary.loading')}</strong>
         </div>
         <div>
           <span>{t('cache.summary.usage')}</span>
           <strong>
             {dashboard
               ? `${formatBytes(dashboard.sizeBytes)} / ${formatBytes(dashboard.maxSizeBytes)}`
-              : '读取中…'}
+              : t('cache.summary.loading')}
           </strong>
         </div>
         <progress max="100" value={percentage}>{percentage.toFixed(0)}%</progress>
-        <small>固定保留 {dashboard?.ttlDays || 30} 天；达到容量上限后优先清理最久未使用的译文。</small>
+        <small>{t('cache.ttlNote', { days: dashboard?.ttlDays || 30 })}</small>
       </div>
 
       {dashboard && !dashboard.isAvailable && (
@@ -103,10 +104,10 @@ export function CacheSettingsCard({ id }: CacheSettingsCardProps = {}) {
           className="danger-text-button"
           type="button"
           onClick={clearCache}
-          disabled={busy || dashboard?.isAvailable === false}
+          disabled={busy}
         >
           <TrashIcon size={14} />
-          {busy ? '清理中…' : '清空翻译缓存'}
+          {busy ? t('cache.action.processing') : t('cache.action.clear')}
         </button>
       </div>
     </section>

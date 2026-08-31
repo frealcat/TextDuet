@@ -1,17 +1,34 @@
-import { copyFile } from 'node:fs/promises';
+import { access, copyFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { defineConfig } from 'wxt';
 
-const DISTRIBUTION_DOCUMENTS = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'] as const;
+const DISTRIBUTION_DOCUMENTS = [
+  'LICENSE',
+  'NOTICE',
+  'THIRD_PARTY_NOTICES.md',
+  'SBOM.cdx.json',
+  'THIRD_PARTY_LICENSES.json',
+] as const;
 
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   hooks: {
     'build:done': async () => {
       const outputDirectory = resolve('.output/chrome-mv3');
-      await Promise.all(DISTRIBUTION_DOCUMENTS.map((fileName) =>
-        copyFile(resolve(fileName), resolve(outputDirectory, fileName)),
-      ));
+      await Promise.all(DISTRIBUTION_DOCUMENTS.map(async (fileName) => {
+        const source = resolve(fileName);
+        // Generated release metadata is optional for normal development builds;
+        // release:check creates it before building and then verifies its copy.
+        try {
+          await access(source);
+        } catch {
+          if (fileName === 'LICENSE' || fileName === 'NOTICE' || fileName === 'THIRD_PARTY_NOTICES.md') {
+            throw new Error(`Required distribution document is missing: ${fileName}`);
+          }
+          return;
+        }
+        await copyFile(source, resolve(outputDirectory, fileName));
+      }));
     },
   },
   manifest: {

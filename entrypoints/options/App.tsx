@@ -13,6 +13,8 @@ import {
 import { parseOperationResult, parsePublicProviderSettings } from '@/src/core/schemas';
 import {
   migrateProviderModelsToOriginCache,
+  isSavedApiKeyForOrigin,
+  normalizeBaseUrlOrigin,
   switchBaseUrlWithModelCache,
   writeActiveModelToOriginCache,
 } from '@/src/storage/provider-models';
@@ -25,6 +27,7 @@ import { CompatibilityDiagnosticsCard } from './CompatibilityDiagnosticsCard';
 import { TranslationAppearanceControls } from './TranslationAppearanceControls';
 import { ModelTagInput } from './ModelTagInput';
 import { CustomLocaleCard } from './CustomLocaleCard';
+import { VaultSettingsCard } from './VaultSettingsCard';
 import { OptionsLayout } from './Layout';
 import type { SidebarSection } from './Sidebar';
 // The picker is a tiny HTML select component (no ECharts), so a
@@ -34,13 +37,20 @@ import type { SidebarSection } from './Sidebar';
 import { LanguagePairPicker } from '@/src/ui/LanguagePairPicker';
 import { applyLocale, type LanguagePreference, resolveActiveLocale, useTranslation } from '@/src/i18n';
 
+type StatusTone = 'danger' | 'info' | 'success' | 'warning';
+
 export function App() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState<ProviderSettings>(DEFAULT_PROVIDER_SETTINGS);
   const [apiKey, setApiKey] = useState('');
   const [hasSavedApiKey, setHasSavedApiKey] = useState(false);
+  // `GET_PROVIDER_SETTINGS` reports the key state for one Provider origin.
+  // Keep that origin beside the flag so a later URL edit cannot display the
+  // previous Provider's state as if it belonged to the current one.
+  const [savedApiKeyOrigin, setSavedApiKeyOrigin] = useState<string | null>(null);
   const [configurationRevision, setConfigurationRevision] = useState(0);
   const [status, setStatus] = useState('');
+  const [statusTone, setStatusTone] = useState<StatusTone>('info');
   const [busy, setBusy] = useState(false);
   const selectedPreset = PROVIDER_PRESETS.find((preset) => preset.baseUrl === settings.baseUrl);
 
@@ -58,11 +68,17 @@ export function App() {
         });
         setSettings(migrated);
         setHasSavedApiKey(hasApiKey);
+        setSavedApiKeyOrigin(normalizeBaseUrlOrigin(saved.baseUrl));
         const pref: LanguagePreference = (migrated.language as LanguagePreference | undefined) || 'auto';
         applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
       })
-      .catch(() => setStatus('读取配置失败，请重新加载扩展后重试'));
+      .catch(() => setStatusMessage(t('options.status.readConfigFailed'), 'danger'));
   }, []);
+
+  function setStatusMessage(message: string, tone: StatusTone = 'info'): void {
+    setStatus(message);
+    setStatusTone(tone);
+  }
 
   function update<K extends keyof ProviderSettings>(key: K, value: ProviderSettings[K]): void {
     if (key === 'language') {
@@ -70,6 +86,17 @@ export function App() {
       // Apply immediately so every t() call (including this render pass)
       // sees the new locale. The settings state is updated below.
       applyLocale(pref === 'auto' ? resolveActiveLocale() : pref, pref);
+    }
+    if (key === 'baseUrl' && typeof value === 'string' && value !== settings.baseUrl) {
+      const previousOrigin = normalizeBaseUrlOrigin(settings.baseUrl);
+      const nextOrigin = normalizeBaseUrlOrigin(value);
+      if (previousOrigin !== nextOrigin) {
+        // The public status is scoped to the origin returned by the Service
+        // Worker. Until this new origin is saved and re-read, the old flag is
+        // not evidence that a key exists here.
+        setHasSavedApiKey(false);
+        setSavedApiKeyOrigin(null);
+      }
     }
     setSettings((current) => {
       if (key === 'baseUrl' && typeof value === 'string' && value !== current.baseUrl) {
@@ -91,7 +118,7 @@ export function App() {
 
   async function save(testAfterSave = false): Promise<void> {
     setBusy(true);
-    setStatus('');
+    setStatusMessage('');
 
     try {
       const normalizedSettings: ProviderSettings = {
@@ -102,10 +129,10 @@ export function App() {
         selectionQuickAction: settings.selectionQuickAction === true,
         headerPopupRescan: settings.headerPopupRescan === true,
       };
-      const originPattern = toOriginPattern(settings.baseUrl);
+      const originPattern = toOriginPattern(settings.baseUrl, t('options.error.httpsRequired'));
       const granted = await browser.permissions.request({ origins: [originPattern] });
       if (!granted) {
-        throw new Error('需要访问模型 API 域名才能发送翻译请求');
+        throw new Error(t('options.error.originPermissionRequired'));
       }
 
       const rawResult: unknown = await browser.runtime.sendMessage({
@@ -116,13 +143,30 @@ export function App() {
       const result = parseOperationResult(rawResult);
 
       if (!result.ok) {
-        throw new Error(result.message || '保存失败');
+        throw new Error(result.message || t('options.status.saveFailed'));
       }
 
-      setHasSavedApiKey(Boolean(apiKey) || hasSavedApiKey);
       setSettings(normalizedSettings);
       setApiKey('');
       setConfigurationRevision((current) => current + 1);
+
+      // SAVE_PROVIDER_SETTINGS intentionally returns only an operation
+      // result. Re-read the redacted public settings so the badge reflects
+      // the Service Worker's current-origin lookup, including saves that
+      // leave the API key field blank.
+      await browser.runtime
+        .sendMessage({ type: 'GET_PROVIDER_SETTINGS' } satisfies RuntimeMessage)
+        .then((value) => {
+          const refreshed = parsePublicProviderSettings(value);
+          setHasSavedApiKey(refreshed.hasApiKey);
+          setSavedApiKeyOrigin(normalizeBaseUrlOrigin(refreshed.baseUrl));
+        })
+        .catch(() => {
+          // Do not resurrect a stale origin's state when the refresh fails.
+          setHasSavedApiKey(false);
+          setSavedApiKeyOrigin(null);
+        });
+
       await browser.runtime.sendMessage({
         type: 'CONFIGURE_SELECTION_QUICK_ACTION',
         enabled: normalizedSettings.selectionQuickAction === true,
@@ -132,20 +176,20 @@ export function App() {
       } satisfies RuntimeMessage).catch(() => undefined);
 
       if (testAfterSave) {
-        setStatus('正在连接模型…');
+        setStatusMessage(t('options.status.connecting'));
         const rawTestResult: unknown = await browser.runtime.sendMessage({
           type: 'TEST_PROVIDER',
         } satisfies RuntimeMessage);
         const testResult = parseOperationResult(rawTestResult);
         if (!testResult.ok) {
-          throw new Error(testResult.message || '连接测试失败');
+          throw new Error(testResult.message || t('options.status.testConnectionFailed'));
         }
-        setStatus(testResult.message || '连接成功');
+        setStatusMessage(testResult.message || t('options.status.testConnectionSuccess'), 'success');
       } else {
-        setStatus(result.message || '配置已保存');
+        setStatusMessage(result.message || t('options.status.configSaved'), 'success');
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '操作失败');
+      setStatusMessage(error instanceof Error ? error.message : t('options.status.operationFailed'), 'danger');
     } finally {
       setBusy(false);
     }
@@ -157,7 +201,7 @@ export function App() {
     () => [
       {
         id: 'section-language',
-        label: '语言',
+        label: t('options.sidebar.language'),
         children: [
           { step: '00', label: t('language.section.title') },
           { step: '06', label: t('language.custom.title') },
@@ -165,7 +209,7 @@ export function App() {
       },
       {
         id: 'section-model',
-        label: '模型',
+        label: t('options.sidebar.model'),
         children: [
           { step: '01', label: t('options.section.provider.title') },
           { step: '02', label: t('options.section.preferences.title') },
@@ -174,20 +218,28 @@ export function App() {
       },
       {
         id: 'section-usage',
-        label: '用量',
+        label: t('options.sidebar.usage'),
         children: [
-          { step: '04', label: t('usage.dashboard.title') },
-          { step: '05', label: t('cost.title') },
-          { step: '07', label: t('cache.title') },
+          { step: '04', label: t('usage.section.title') },
+          { step: '05', label: t('cost.section.title') },
+          { step: '07', label: t('cache.section.title') },
         ],
       },
       {
         id: 'section-advanced',
-        label: '高级',
-        children: [{ step: '08', label: t('diagnostics.title') }],
+        label: t('options.sidebar.advanced'),
+        children: [
+          { step: '08', label: t('diagnostics.section.title') },
+          { step: '09', label: t('vault.section.title') },
+        ],
       },
     ],
     [t],
+  );
+  const hasCurrentOriginSavedApiKey = isSavedApiKeyForOrigin(
+    hasSavedApiKey,
+    savedApiKeyOrigin,
+    settings.baseUrl,
   );
 
   return (
@@ -197,23 +249,13 @@ export function App() {
         <header>
           <div className="eyebrow">{t('options.brand.eyebrow')}</div>
           <h1>{t('options.brand.title')}</h1>
-          <p>
-            网页文本会从浏览器直接发送给你选择的模型服务商，不经过本项目的服务器。
-          </p>
+          <p>{t('options.brand.description')}</p>
         </header>
       }
       actionBar={
         <div className="action-bar">
           <p
-            className={`td-badge ${
-              /失败|错误|不能|不可|拒绝/.test(status)
-                ? 'td-badge--danger'
-                : /警告|注意|未配置/.test(status)
-                  ? 'td-badge--warning'
-                  : /成功|已|完成/.test(status)
-                    ? 'td-badge--success'
-                    : 'td-badge--info'
-            }`}
+            className={`td-badge td-badge--${statusTone}`}
             role="status"
             aria-live="polite"
           >
@@ -221,7 +263,7 @@ export function App() {
           </p>
           <button className="secondary-button" type="button" onClick={() => save(true)} disabled={busy}>
             <PlugIcon size={16} />
-            测试连接
+            {t('options.action.testConnection')}
           </button>
           <button className="primary-button" type="button" onClick={() => save(false)} disabled={busy}>
             {busy ? (
@@ -229,7 +271,7 @@ export function App() {
             ) : (
               <SaveIcon size={16} />
             )}
-            {busy ? '处理中…' : '保存配置'}
+            {busy ? t('options.action.processing') : t('options.action.saveConfig')}
           </button>
         </div>
       }
@@ -263,9 +305,9 @@ export function App() {
             <span className="step">01</span>
             <h2 id="provider-heading">{t('options.section.provider.title')}</h2>
           </div>
-          <span className={hasSavedApiKey ? 'badge success' : 'badge'}>
+          <span className={hasCurrentOriginSavedApiKey ? 'badge success' : 'badge'}>
             <KeyIcon size={12} />
-            {hasSavedApiKey ? '已保存密钥' : '尚未配置'}
+            {hasCurrentOriginSavedApiKey ? t('options.apiKey.badge.saved') : t('options.apiKey.badge.empty')}
           </span>
         </div>
 
@@ -284,7 +326,7 @@ export function App() {
 
         <div className="field-grid">
           <label className="wide-field">
-            <span>API Base URL</span>
+            <span>{t('options.apiBaseUrl.label')}</span>
             <input
               type="url"
               value={settings.baseUrl}
@@ -299,12 +341,14 @@ export function App() {
           </label>
 
           <label className="wide-field">
-            <span>API Key</span>
+            <span>{t('options.apiKey.label')}</span>
             <input
               type="password"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder={hasSavedApiKey ? '已保存；留空表示不修改' : '粘贴你的 API Key'}
+              placeholder={hasCurrentOriginSavedApiKey
+                ? t('options.apiKey.placeholderSaved')
+                : t('options.apiKey.placeholderNew')}
               autoComplete="off"
               spellCheck={false}
             />
@@ -314,7 +358,7 @@ export function App() {
             <ModelTagInput
               models={settings.models || []}
               activeModel={settings.model}
-              placeholder={selectedPreset?.modelPlaceholder || '例如：your-model-name'}
+              placeholder={selectedPreset?.modelPlaceholder || t('options.modelTag.placeholderExample')}
               disabled={busy}
               onModelsChange={(models) => update('models', models)}
               onActiveModelChange={(model) => update('model', model)}
@@ -376,8 +420,7 @@ export function App() {
           />
           <span>{t('options.headerPopup.label')}</span>
           <small>
-            适用于 GitHub / Stack Overflow 这类点击头像后挂出的菜单。
-            开启后点击顶部菜单会触发一次额外重扫，关闭则只翻译主文档流。
+            {t('options.headerPopup.hint')}
           </small>
         </label>
       </section>
@@ -413,6 +456,7 @@ export function App() {
       <CostSettingsCard id="section-usage-05" model={settings.model} />
       <CacheSettingsCard id="section-usage-07" />
       <CompatibilityDiagnosticsCard id="section-advanced-08" />
+      <VaultSettingsCard id="section-advanced-09" />
       <CustomLocaleCard
         id="section-language-06"
         currentLanguagePreference={(settings.language as string | undefined) || 'auto'}
@@ -422,10 +466,10 @@ export function App() {
   );
 }
 
-function toOriginPattern(baseUrl: string): string {
+function toOriginPattern(baseUrl: string, httpsRequiredMessage: string): string {
   const url = new URL(baseUrl);
   if (url.protocol !== 'https:') {
-    throw new Error('API 地址必须使用 HTTPS');
+    throw new Error(httpsRequiredMessage);
   }
   return `${url.origin}/*`;
 }

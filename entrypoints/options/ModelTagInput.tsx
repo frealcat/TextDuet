@@ -30,24 +30,24 @@ export function ModelTagInput({
     if (models.includes(model)) {
       onActiveModelChange(model);
       setDraft('');
-      setFeedback(`已切换到 ${model}`);
+      setFeedback(t('modelTag.feedback.switched', { model }));
       return;
     }
     if (models.length >= MAX_MODELS) {
-      setFeedback(`最多可配置 ${MAX_MODELS} 个模型`);
+      setFeedback(t('modelTag.feedback.maxReached', { max: MAX_MODELS }));
       return;
     }
     onModelsChange([...models, model]);
     onActiveModelChange(model);
     setDraft('');
-    setFeedback(`已添加并选中 ${model}`);
+    setFeedback(t('modelTag.feedback.addedSelected', { model }));
   }
 
   function removeModel(model: string): void {
     const nextModels = models.filter((item) => item !== model);
     onModelsChange(nextModels);
     if (activeModel === model) onActiveModelChange(nextModels[0] || '');
-    setFeedback(`已移除 ${model}`);
+    setFeedback(t('modelTag.feedback.removed', { model }));
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
@@ -84,8 +84,8 @@ export function ModelTagInput({
               className="model-tag-remove"
               type="button"
               disabled={disabled}
-              aria-label={`删除模型 ${model}`}
-              title={`删除 ${model}`}
+              aria-label={t('modelTag.tag.removeAria', { model })}
+              title={t('modelTag.tag.removeTitle', { model })}
               onClick={() => removeModel(model)}
             >
               <CloseIcon size={14} />
@@ -96,8 +96,8 @@ export function ModelTagInput({
           value={draft}
           disabled={disabled}
           maxLength={256}
-          aria-label={t('添加模型名称或 code')}
-          placeholder={models.length === 0 ? placeholder : '输入后按回车添加'}
+          aria-label={t('modelTag.input.aria')}
+          placeholder={models.length === 0 ? placeholder : t('modelTag.input.placeholderAdd')}
           spellCheck={false}
           onChange={(event) => setDraft(event.target.value.replace(/,$/, ''))}
           onKeyDown={handleKeyDown}

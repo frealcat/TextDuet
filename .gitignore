@@ -1,6 +1,10 @@
 node_modules/
 .wxt/
 .output/
+.pages/
+.release/
+SBOM.cdx.json
+THIRD_PARTY_LICENSES.json
 coverage/
 output/playwright/
 *.log
@@ -8,4 +12,31 @@ output/playwright/
 .env
 .env.*
 !.env.example
-.playwright/
+# Private maintainer materials are intentionally kept out of the public source
+# repository. They remain local to the release workspace.
+/main.html
+/popup.html
+.playwright/*.png
+store-assets/
+agent-dev/
+AGENT_DEV.md
+AGENTS.md
+CLAUDE.md
+.github/copilot-instructions.md
+design-system/
+docs/GITHUB-SETUP.md
+docs/ITERATION-LOG.md
+docs/PRD.zh-CN.md
+docs/PRODUCT-ROADMAP.md
+docs/RELEASE-CHECKLIST.md
+docs/RELEASE-CHECKLIST.zh-CN.md
+docs/RELEASE-NOTES-0.1.0.md
+docs/STORE-LISTING.md
+docs/STORE-LISTING.zh-CN.md
+docs/TD-2026-019-SPEED-PLAN.md
+docs/UI-DEVELOPMENT-STANDARD.zh-CN.md
+scripts/capture-store-screenshots.mjs
+scripts/verify-store-assets.mjs
+# Keep browser regression source files reviewable and distributable. Only
+# generated profiles belong in the ignore set.
+.playwright/browser-profile/

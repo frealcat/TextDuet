@@ -23,6 +23,12 @@ export const MESSAGES_EN: MessageDict = {
   'popup.display.sourceOnly': 'Source only',
   'popup.display.translatedOnly': 'Translation only',
   'popup.quickAction.label': 'Show quick-translate icon on selection',
+  'popup.consent.title': 'Before the first translation',
+  'popup.consent.description': 'The visible webpage text you choose to translate is sent directly to the provider you select. Your provider may charge you. TextDuet does not receive or proxy this data.',
+  'popup.consent.confirm': 'I understand and continue',
+  'popup.consent.loading': 'Checking privacy confirmation…',
+  'popup.consent.error': 'Unable to read the privacy confirmation. Please try again.',
+  'popup.consent.confirmFailed': 'Unable to save your confirmation. Please try again.',
 
   // Today's usage card
   'popup.cost.aria': "Today's model usage",
@@ -30,6 +36,7 @@ export const MESSAGES_EN: MessageDict = {
   'popup.cost.estimated': 'Estimate included',
   'popup.cost.inputOutput': 'Input {input} · Output {output}',
   'popup.cost.budgetNote': 'Reaching 100% only shows a reminder',
+  'popup.cost.totalTokens': '{count} tokens',
   'popup.cost.ledgerWarning': 'Local ledger temporarily unavailable',
   'popup.cost.loading': 'Loading local summary…',
 
@@ -52,6 +59,7 @@ export const MESSAGES_EN: MessageDict = {
   'popup.footer.modelPending': 'Model not configured',
   'popup.footer.noApiKey': 'API key not configured',
   'popup.footer.openSettings': 'Settings',
+  'popup.settings.aria': 'Open TextDuet settings',
 
   // Budget progress status messages
   'popup.budget.reached': 'Budget reached · {percent}%',
@@ -77,6 +85,15 @@ export const MESSAGES_EN: MessageDict = {
   'options.apiKey.placeholderSaved': 'Saved; leave blank to keep unchanged',
   'options.apiKey.placeholderNew': 'Paste your API key',
   'options.modelTag.placeholderExample': 'e.g. your-model-name',
+  'options.apiBaseUrl.label': 'API Base URL',
+  'options.apiKey.label': 'API key',
+  'options.sidebar.aria': 'Settings navigation',
+  'options.sidebar.expand': 'Expand navigation',
+  'options.sidebar.collapse': 'Collapse navigation',
+  'options.sidebar.language': 'Language',
+  'options.sidebar.model': 'Model',
+  'options.sidebar.usage': 'Usage',
+  'options.sidebar.advanced': 'Advanced',
 
   // 02 Key and default preferences
   'options.section.preferences.title': 'Key and default preferences',
@@ -272,7 +289,34 @@ export const MESSAGES_EN: MessageDict = {
     'Recommended. Cleared automatically when the browser closes — re-enter the key next time.',
   'persistence.local.title': 'Stored persistently on this machine',
   'persistence.local.description':
-    'More convenient, but browser extension local storage is not an encrypted vault.',
+    'Protected by a password-unlocked AES-GCM vault. The vault is locked again after the browser restarts.',
+  'vault.section.title': 'Local encrypted vault',
+  'vault.section.badge': 'Password protected',
+  'vault.state.notCreated': 'No vault has been created',
+  'vault.state.locked': 'Vault locked',
+  'vault.state.unlocked': 'Vault unlocked for this browser session',
+  'vault.password.createLabel': 'Create vault password',
+  'vault.password.unlockLabel': 'Unlock vault password',
+  'vault.password.confirmLabel': 'Confirm password',
+  'vault.password.placeholder': 'At least 8 characters',
+  'vault.action.create': 'Create vault',
+  'vault.action.unlock': 'Unlock vault',
+  'vault.action.lock': 'Lock vault',
+  'vault.action.delete': 'Delete vault and stored keys',
+  'vault.action.processing': 'Working…',
+  'vault.action.clearCache': 'Clear encrypted translation cache',
+  'vault.hint': 'Persistent API keys and cached translations are encrypted locally. The password is never stored; a browser restart requires unlocking again.',
+  'vault.hint.locked': 'Unlock the vault before saving or using a persistent API key.',
+  'vault.confirm.delete': 'Delete the vault, all persistent API keys, and all locally cached translations? This cannot be undone.',
+  'vault.confirm.clearCache': 'Clear all locally cached translations? Your encrypted vault and persistent API keys will remain.',
+  'vault.status.created': 'Encrypted vault created',
+  'vault.status.unlocked': 'Vault unlocked',
+  'vault.status.locked': 'Vault locked',
+  'vault.status.deleted': 'Vault and stored secrets deleted',
+  'vault.status.cacheCleared': 'Encrypted translation cache cleared',
+  'vault.status.passwordMismatch': 'Passwords do not match',
+  'vault.status.passwordRequired': 'Enter a vault password',
+  'vault.status.failed': 'Vault operation failed',
 
   // ---- Language direction selector ----
   'languagePair.aria': 'Language direction',
@@ -324,6 +368,7 @@ export const MESSAGES_EN: MessageDict = {
   'translator.selection.error.noTranslation': 'The model did not return a translation',
   'translator.selection.error.apiKey': 'Please configure the API key first',
   'translator.selection.error.format': 'The model returned an invalid format',
+  'translator.selection.error.consent': 'Please confirm the privacy notice in Popup or Options first',
   'translator.selection.error.generic': 'Selection translation failed',
   'translator.selection.quickAction.label': 'Translate selection',
 
@@ -331,13 +376,14 @@ export const MESSAGES_EN: MessageDict = {
   // Sits as the FIRST card on the Options page; lets the user pin the UI
   // locale or follow the browser default. `auto` resolves via
   // navigator.language (en-* → en, zh-* → zh-CN, else → zh-CN).
-  'language.section.title': 'Language / 语言',
+  'language.section.title': 'Language',
   'language.section.description':
     'Choose the display language of the extension UI. Auto follows the browser language preference.',
   'language.option.auto.label': 'Auto · follow browser',
   'language.option.auto.description':
     'Resolved from navigator.language; most Chinese and English users do not need to change this',
   'language.option.zh-CN.label': '简体中文',
+  'language.option.zh-CN.shortLabel': '中',
   'language.option.zh-CN.description': 'Pin to zh-CN regardless of the browser language',
   'language.option.en.label': 'English',
   'language.option.en.description': 'Pin to English regardless of the browser language',
@@ -350,7 +396,13 @@ export const MESSAGES_EN: MessageDict = {
     'Click a preset to translate the extension UI using your configured model and save the result locally. The locale will load automatically next time you open Options or Popup.',
   'language.custom.allDownloaded': 'All common presets are downloaded. Type a BCP-47 tag below for any other language.',
   'language.custom.inputLabel': 'Custom BCP-47 tag',
+  'language.custom.inputPlaceholder': 'e.g. fr-FR / ja-JP / zh-TW',
   'language.custom.translateButton': 'Translate and switch',
+  'language.custom.preparing': 'Preparing translation to {language}…',
+  'language.custom.progress': 'Translating to {language}… {done}/{total}',
+  'language.custom.completed': 'Translated to {language}',
+  'language.custom.translateFailed': 'Unable to translate the UI language. Please try again.',
+  'language.custom.invalidTag': 'Enter a valid BCP-47 tag, such as fr-FR or ja-JP.',
   'language.custom.entriesUnit': 'entries',
   'language.custom.listTitle': 'Downloaded custom languages',
   'language.custom.retranslate': 'Re-translate',

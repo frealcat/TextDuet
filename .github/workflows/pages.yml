@@ -1,0 +1,62 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pages.yml'
+      - 'docs/PRIVACY.md'
+      - 'docs/PRIVACY.zh-CN.md'
+      - 'pages/**'
+      - 'public/icons/icon-128.png'
+      - 'scripts/build-pages.mjs'
+      - 'package.json'
+      - '.nvmrc'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Build public privacy pages
+        run: npm run pages:build
+      - name: Verify public privacy pages
+        run: npm run pages:verify
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .pages
+      - name: Reject scripts and inline event handlers
+        run: |
+          # Match actual event attributes (for example onclick=), not the
+          # common HTML `content=` metadata attribute.
+          ! rg -n '<script\b|\bon[a-z][a-z0-9-]*\s*=' .pages
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

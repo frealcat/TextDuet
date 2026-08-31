@@ -6,16 +6,16 @@ import {
   parseOperationResult,
 } from '@/src/core/schemas';
 import { serializeCompatibilityDiagnostic } from '@/src/core/compatibility-diagnostics';
-import { t } from '@/src/i18n';
+import { useTranslation } from '@/src/i18n';
 
 const ISSUE_TYPES = [
-  ['missed-content', '遗漏内容'],
-  ['wrong-content', '译文不正确'],
-  ['duplicate-translation', '重复翻译'],
-  ['layout', '页面布局'],
-  ['dynamic-content', '动态内容'],
-  ['performance', '性能问题'],
-  ['other', '其他'],
+  ['missed-content', 'diagnostics.issueType.missed'],
+  ['wrong-content', 'diagnostics.issueType.wrongContent'],
+  ['duplicate-translation', 'diagnostics.issueType.duplicateTranslation'],
+  ['layout', 'diagnostics.issueType.layout'],
+  ['dynamic-content', 'diagnostics.issueType.dynamicContent'],
+  ['performance', 'diagnostics.issueType.performance'],
+  ['other', 'diagnostics.issueType.other'],
 ] as const;
 
 interface CompatibilityDiagnosticsCardProps {
@@ -24,6 +24,7 @@ interface CompatibilityDiagnosticsCardProps {
 }
 
 export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCardProps = {}) {
+  const { t } = useTranslation();
   const [issueType, setIssueType] = useState<CompatibilityDiagnostic['issue']['type']>('other');
   const [includePath, setIncludePath] = useState(false);
   const [diagnostic, setDiagnostic] = useState<CompatibilityDiagnostic | null>(null);
@@ -32,7 +33,7 @@ export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCar
 
   async function generateDiagnostic(): Promise<void> {
     setBusy(true);
-    setStatus('正在读取当前页面的脱敏计数…');
+    setStatus(t('diagnostics.status.reading'));
     try {
       const rawResult: unknown = await browser.runtime.sendMessage({
         type: 'GET_COMPATIBILITY_DIAGNOSTIC',
@@ -42,17 +43,17 @@ export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCar
       try {
         nextDiagnostic = parseCompatibilityDiagnostic(rawResult);
       } catch {
-        const operation = parseOperationResult(rawResult);
-        throw new Error(operation.message || '无法生成诊断包');
+        parseOperationResult(rawResult);
+        throw new Error();
       }
       setDiagnostic({
         ...nextDiagnostic,
         issue: { ...nextDiagnostic.issue, type: issueType },
       });
-      setStatus('诊断包已在本机生成，请先检查预览');
-    } catch (error) {
+      setStatus(t('diagnostics.status.generated'));
+    } catch {
       setDiagnostic(null);
-      setStatus(error instanceof Error ? error.message : '无法生成诊断包');
+      setStatus(t('diagnostics.status.failed'));
     } finally {
       setBusy(false);
     }
@@ -68,7 +69,9 @@ export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCar
   function updatePathConsent(value: boolean): void {
     setIncludePath(value);
     setDiagnostic(null);
-    setStatus(value ? '已同意包含当前页面路径，请重新生成预览' : '已移除路径包含选项，请重新生成预览');
+    setStatus(value
+      ? t('diagnostics.status.pathIncluded')
+      : t('diagnostics.status.pathExcluded'));
   }
 
   function downloadDiagnostic(): void {
@@ -82,7 +85,7 @@ export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCar
     anchor.download = `textduet-compatibility-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setStatus('诊断包已下载到本机');
+    setStatus(t('diagnostics.status.downloaded'));
   }
 
   return (
@@ -94,13 +97,12 @@ export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCar
         </div>
         <span className="badge">
           <AlertIcon size={14} />
-          默认仅本地
+          {t('diagnostics.section.badge')}
         </span>
       </div>
 
       <p className="cost-disclaimer">
-        诊断包只包含主机名、可选路径和翻译计数，不包含正文、URL 参数、API Key、截图或自动上传。
-        请先在目标网页启动一次翻译，再回到这里为最近翻译的页面生成。
+        {t('diagnostics.disclaimer')}
       </p>
 
       <div className="diagnostic-controls">
@@ -110,8 +112,8 @@ export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCar
             value={issueType}
             onChange={(event) => updateIssueType(event.target.value as CompatibilityDiagnostic['issue']['type'])}
           >
-            {ISSUE_TYPES.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+            {ISSUE_TYPES.map(([value, labelKey]) => (
+              <option key={value} value={value}>{t(labelKey)}</option>
             ))}
           </select>
         </label>
@@ -134,16 +136,16 @@ export function CompatibilityDiagnosticsCard({ id }: CompatibilityDiagnosticsCar
       <div className="card-actions">
         <button className="secondary-button" type="button" onClick={generateDiagnostic} disabled={busy}>
           <RefreshIcon className={busy ? 'spin' : ''} size={14} />
-          {busy ? '生成中…' : '生成本地预览'}
+          {busy ? t('diagnostics.action.processing') : t('diagnostics.action.generate')}
         </button>
         <button className="primary-button" type="button" onClick={downloadDiagnostic} disabled={!diagnostic || busy}>
           <DownloadIcon size={14} />
-          下载诊断包
+          {t('diagnostics.action.download')}
         </button>
       </div>
 
       {diagnostic && (
-        <pre className="diagnostic-preview" aria-label={t('兼容性诊断包预览')}>
+        <pre className="diagnostic-preview" aria-label={t('diagnostics.preview.aria')}>
           {serializeCompatibilityDiagnostic(diagnostic)}
         </pre>
       )}

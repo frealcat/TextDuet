@@ -1,21 +1,78 @@
-# Chrome 权限说明
+# Chrome Permissions
 
-> 对应 `0.1.0` 本地安装版生产 Manifest，更新于 2026-08-24。
+[中文](./CHROME-PERMISSIONS.zh-CN.md)
 
-TextDuet 使用 Chrome Manifest V3。生产构建不注册静态全站内容脚本，也不在安装时申请所有网站的读取权限。
+> Applies to the `0.2.0` production Manifest V3 build. Verify the generated
+> `.output/chrome-mv3/manifest.json` before each release.
 
-| 权限 | 用途 | 触发方式 |
+TextDuet uses the smallest permission set needed to translate a page after a
+user action. It does not install a permanent content script or request access
+to every website at installation time.
+
+| Permission | Why it exists | When it is used |
 | --- | --- | --- |
-| `activeTab` | 只在用户点击扩展后识别并操作当前标签页 | 用户主动启动翻译 |
-| `scripting` | 把 Translator Script 按需注入当前普通网页 | 用户主动启动翻译 |
-| `storage` | 在扩展本地保存设置、会话/持久 Key 选择和必要状态 | 用户保存设置或使用功能 |
-| `contextMenus` | 在用户选中文本后提供“翻译选中文本”菜单项 | 用户右键选区；只处理 Chrome 提供的当前选区 |
-| 可选 `https://*/*` | 只授权用户配置的 HTTPS 模型 API Origin 发起请求 | 保存 Provider 时由 Chrome 单独询问 |
+| `activeTab` | Temporarily inspect and operate on the tab the user chose. | The user starts a page translation or a selection translation. |
+| `scripting` | Inject the locally bundled Translator Script on demand. | After a user action on a supported ordinary webpage. |
+| `storage` | Keep non-secret settings, session state, encrypted Vault metadata, and local controls in extension storage. | When the user configures or uses TextDuet. |
+| `contextMenus` | Add the “Translate selected text” command to Chrome's context menu. | The user right-clicks a text selection. |
+| Optional `https://*/*` | Provide a requestable range for a configured HTTPS model API Origin. | Only after the user saves a Provider and Chrome presents the permission prompt. |
 
-`https://*/*` 是可选权限声明的范围，不代表安装后已获全站访问。实现会把用户填写的 API Base URL 收敛为单个 Origin，例如 `https://api.example.com/*`，再调用 Chrome 的权限请求界面。拒绝后不会发送模型请求。
+## Optional Provider Origin Access
 
-当已配置 Provider 为 OpenRouter 时，官方模型价格查询复用用户已授予的 `https://openrouter.ai/*` Origin，仅请求公开 `/api/v1/models`，不增加 Manifest 权限，也不携带 API Key、模型名称或本地用量。
+`https://*/*` is an optional declaration, not install-time access to all HTTPS
+websites. Before a Provider request, TextDuet normalizes the configured Base
+URL to one HTTPS Origin (for example, `https://api.example.com/*`) and asks
+Chrome for that Origin. A denial prevents the request; it does not cause
+TextDuet to fall back to a broader permission.
 
-网页翻译只支持普通 HTTP/HTTPS 页面。`chrome://`、Chrome Web Store、受保护的浏览器页面、登录墙、验证码和付费墙不在支持范围，也不会尝试绕过访问控制。
+The permission is for the model endpoint, not for reading arbitrary sites.
+`activeTab` and the user action govern page access separately. If a user
+changes Provider Origins, Chrome may show a new prompt. Users can revoke an
+Origin in Chrome's extension settings.
 
-发布前运行 `npm run release:check`；门禁会拒绝生产 Manifest 中新增的静态 `host_permissions`、静态 `content_scripts` 或未经文档同步的权限变化。任何新增权限必须先更新 PRD、架构、本文和迭代记录，并完成人工隐私审查。
+When OpenRouter is selected, the public model-price request reuses the
+authorized `https://openrouter.ai/*` Origin and calls `/api/v1/models` without
+an API key, page text, model name, or usage history. DeepSeek balance requests
+are sent only after a user click to the exact official Origin documented in
+the [privacy policy](https://frealcat.github.io/TextDuet/privacy/).
+
+## What Is Not Requested
+
+The production manifest must not contain:
+
+- static `content_scripts` that run on every site;
+- static `host_permissions` or `<all_urls>`;
+- install-time permission to read all browsing activity; or
+- remote scripts, remotely hosted executable code, or a server-side proxy.
+
+The Translator Script is bundled in the extension and injected only after the
+user starts a supported operation. It cannot read Chrome storage or API keys.
+
+## Supported Page Boundaries
+
+TextDuet targets ordinary HTTP and HTTPS pages. Chrome internal pages such as
+`chrome://` URLs, the Chrome Web Store, extension pages, protected browser
+surfaces, login walls, CAPTCHAs, and paywalls are outside the supported
+boundary. TextDuet does not bypass access controls or inject into pages where
+Chrome refuses extension scripting.
+
+Within a supported page, extraction excludes hidden content, scripts, styles,
+code, forms, editable fields, buttons, and other interactive controls. Visible
+reading links and navigation text can be eligible when they are meaningful
+content. The [compatibility guide](./COMPATIBILITY.md) describes the intended
+behavior and reporting route.
+
+## Release Review
+
+Run `npm run release:check`, then inspect the generated manifest:
+
+```bash
+sed -n '1,240p' .output/chrome-mv3/manifest.json
+rg -n 'content_scripts|<all_urls>|permissions|host_permissions|optional_host_permissions' \
+  .output/chrome-mv3/manifest.json
+```
+
+Any permission or data-scope change must first update the runtime contract,
+architecture, privacy policy, this document, and the iteration record, and
+must receive maintainer privacy review. A build is not ready merely because
+the source configuration looks correct.

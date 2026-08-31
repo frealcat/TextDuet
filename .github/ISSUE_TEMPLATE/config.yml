@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability / 安全漏洞
+    url: https://github.com/frealcat/TextDuet/blob/main/SECURITY.md
+    about: Do not open a public issue. Use GitHub Private Vulnerability Reporting or frealcat@gmail.com. / 请勿公开提交漏洞，请使用 GitHub 私密漏洞报告或 frealcat@gmail.com。
+  - name: Questions and usage support / 使用与安装支持
+    url: https://github.com/frealcat/TextDuet/discussions
+    about: Ask about installation, providers, costs, or usage in Discussions. Never include keys or private page data. / 安装、Provider、费用和使用问题请发到 Discussions，切勿包含密钥或私密网页数据。
+  - name: Privacy policy / 隐私政策
+    url: https://frealcat.github.io/TextDuet/privacy/
+    about: Read the public data-flow and disclosure details in English. / 查看英文公开数据流与披露说明。

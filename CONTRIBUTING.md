@@ -1,25 +1,59 @@
-# 贡献指南
+# Contributing to TextDuet
 
-感谢参与 TextDuet。开始开发前必须先阅读 [Agent 开发规范](./AGENT_DEV.md)、[PRD](./docs/PRD.zh-CN.md)、[产品迭代路线图](./docs/PRODUCT-ROADMAP.md)与[架构说明](./docs/ARCHITECTURE.md)。
+[中文](./CONTRIBUTING.zh-CN.md)
 
-## 开发原则
+Thank you for helping improve TextDuet. This is a local-first Chrome extension: changes must preserve the API-key boundary, minimal permissions, user control over provider costs, and safe webpage rendering.
 
-1. 不把 API Key 或其他机密发送到内容脚本。
-2. 不新增远程可执行代码、广告 SDK 或默认遥测。
-3. 新增权限必须说明用户价值、触发时机和更小权限的替代方案。
-4. 模型返回内容必须作为不可信文本处理，禁止通过 `innerHTML` 注入网页。
-5. Provider 特有逻辑放入 `src/providers/`，不要泄漏到界面或内容脚本。
-6. 新功能需要对应测试与 PRD/架构文档更新。
-7. 贡献默认按 Apache-2.0 许可提交。
-8. 产品级迭代必须更新[迭代记录](./docs/ITERATION-LOG.md)；用户可见变化必须写入 [CHANGELOG](./CHANGELOG.md) 的 `Unreleased`。
+## Before You Start
 
-## 提交流程
+- Use [GitHub Discussions](https://github.com/frealcat/TextDuet/discussions) for questions and early ideas.
+- Check existing issues before opening a new one. Use the relevant issue form for a reproducible bug, documentation change, feature idea, or website compatibility report.
+- Read [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md), [SECURITY.md](./SECURITY.md), and the public [privacy policy](https://frealcat.github.io/TextDuet/privacy/).
+- Do not report a vulnerability in a public issue. Follow `SECURITY.md` instead.
+
+Internal planning documents are optional background, not contribution prerequisites. For implementation work, maintainers may point contributors to the architecture and focused design notes for the affected area.
+
+## Development Setup
+
+Requirements: Node.js 22 LTS or later, npm, and current stable Chrome.
 
 ```bash
-npm install
+git clone https://github.com/frealcat/TextDuet.git
+cd TextDuet
+npm ci
 npm run typecheck
 npm test
 npm run build
 ```
 
-建议提交保持单一目的，并在说明中包含：用户问题、实现方式、权限或隐私影响、验证结果。里程碑状态、迭代证据和发布日志应与该提交的实际范围一致；未发布功能不得标记为“已发布”。
+Load `.output/chrome-mv3` through `chrome://extensions` with Developer mode enabled. See [development documentation](./docs/DEVELOPMENT.md) for browser checks, release checks, and local-provider rules.
+
+Never put an API key in source files, test fixtures, screenshots, issues, pull requests, build output, or commit messages. Use the ignored `.env.local` only for user-run local validation; ordinary tests must use mocks and must not incur model-provider charges.
+
+## Pull Requests
+
+Keep each pull request focused and describe:
+
+1. The user problem and its scope.
+2. The approach and any behavior change.
+3. Tests run and their results.
+4. Permission, privacy, API-key, provider-cost, storage, or migration impact.
+5. Documentation, screenshots, or release-note updates needed for user-visible changes.
+
+Add focused tests for behavior changes. Do not weaken input validation, content-script boundaries, optional-origin permissions, or text-only rendering to make a test pass. New runtime dependencies, Manifest permissions, data collection, Provider protocols, or breaking data migrations require maintainer agreement before implementation.
+
+## Documentation And Compatibility Reports
+
+Keep English and Chinese public documentation aligned when changing user-facing behavior. Do not add private URLs, account data, page text that cannot be shared publicly, provider request bodies, API keys, or sensitive screenshots.
+
+For webpage compatibility work, use public pages that do not require login. Do not bypass paywalls, CAPTCHAs, access controls, robots restrictions, or website security measures.
+
+## License Of Contributions
+
+TextDuet is licensed under Apache-2.0. No Contributor License Agreement (CLA) or Developer Certificate of Origin (DCO) is required.
+
+By submitting a contribution, you confirm that you have the right to submit it and agree that your contribution is licensed under the [Apache License 2.0](./LICENSE), including its patent grant, under the same terms as the project.
+
+## Review And Communication
+
+The project follows the decision and review process in [GOVERNANCE.md](./GOVERNANCE.md). Maintainers may request tests, documentation, smaller commits, or design clarification before merging. Please keep discussion respectful and assume good intent.

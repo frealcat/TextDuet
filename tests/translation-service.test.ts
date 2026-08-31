@@ -5,9 +5,11 @@ const mocks = vi.hoisted(() => ({
   getApiKey: vi.fn(),
   lookupTranslationCache: vi.fn(),
   storeTranslationCache: vi.fn(),
+  getTranslationCacheGeneration: vi.fn(),
   estimateTranslation: vi.fn(),
   getCostDashboard: vi.fn(),
   settleTranslation: vi.fn(),
+  hasTranslationConsent: vi.fn(),
 }));
 
 vi.mock('@/src/storage/settings', () => ({
@@ -28,6 +30,7 @@ vi.mock('@/src/storage/settings', () => ({
 vi.mock('@/src/storage/translation-cache', () => ({
   lookupTranslationCache: mocks.lookupTranslationCache,
   storeTranslationCache: mocks.storeTranslationCache,
+  getTranslationCacheGeneration: mocks.getTranslationCacheGeneration,
 }));
 
 vi.mock('@/src/storage/cost-service', () => ({
@@ -36,7 +39,11 @@ vi.mock('@/src/storage/cost-service', () => ({
   settleTranslation: mocks.settleTranslation,
 }));
 
-import { translateWithCache } from '@/src/background/translation-service';
+vi.mock('@/src/storage/translation-consent', () => ({
+  hasTranslationConsent: mocks.hasTranslationConsent,
+}));
+
+import { translateStreamWithCache, translateWithCache } from '@/src/background/translation-service';
 
 const request = {
   sourceLanguage: 'auto',
@@ -67,6 +74,8 @@ describe('translation service cache orchestration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getApiKey.mockResolvedValue('local-test-placeholder');
+    mocks.getTranslationCacheGeneration.mockReturnValue(0);
+    mocks.hasTranslationConsent.mockResolvedValue(true);
     mocks.storeTranslationCache.mockResolvedValue(undefined);
     mocks.getCostDashboard.mockResolvedValue({
       settings: {
@@ -144,12 +153,46 @@ describe('translation service cache orchestration', () => {
       { ...request, blocks: [{ id: 'two', text: 'Two' }] },
       expect.any(String),
       [{ id: 'two', translatedText: '二' }],
+      { generation: 0 },
     );
     expect(response.blocks).toEqual([
       { id: 'one', translatedText: '一' },
       { id: 'two', translatedText: '二' },
     ]);
     expect(response.cache).toEqual({ hitCount: 1, missCount: 1, isAvailable: true });
+  });
+
+  it('blocks a cache miss before reading the Key or calling the Provider when consent is absent', async () => {
+    mocks.hasTranslationConsent.mockResolvedValue(false);
+    mocks.lookupTranslationCache.mockResolvedValue({
+      cachedBlocks: [],
+      missingBlocks: request.blocks,
+    });
+    const provider = createProvider();
+
+    await expect(
+      translateWithCache(provider, request, new AbortController().signal),
+    ).rejects.toThrow('首次发送网页文本前需要确认数据去向与模型费用');
+    expect(mocks.getApiKey).not.toHaveBeenCalled();
+    expect(provider.translate).not.toHaveBeenCalled();
+  });
+
+  it('allows a cache miss after the current consent version is confirmed', async () => {
+    mocks.hasTranslationConsent.mockResolvedValue(true);
+    mocks.lookupTranslationCache.mockResolvedValue({
+      cachedBlocks: [],
+      missingBlocks: request.blocks,
+    });
+    const provider = createProvider();
+    vi.mocked(provider.translate).mockResolvedValue({
+      model: 'example-model',
+      blocks: request.blocks.map((block) => ({ id: block.id, translatedText: `译文-${block.id}` })),
+      usage: { inputTokens: 8, outputTokens: 4, kind: 'actual' },
+    });
+
+    await translateWithCache(provider, request, new AbortController().signal);
+    expect(mocks.hasTranslationConsent).toHaveBeenCalledOnce();
+    expect(provider.translate).toHaveBeenCalledOnce();
   });
 
   it('continues without cache when IndexedDB lookup fails', async () => {
@@ -200,6 +243,44 @@ describe('translation service cache orchestration', () => {
     );
     expect(response.cache).toEqual({ hitCount: 0, missCount: 2, isAvailable: true });
     expect(response.blocks[0]?.translatedText).toBe('新一');
+  });
+
+  it('publishes stream blocks only after the provider returns a complete response', async () => {
+    mocks.lookupTranslationCache.mockResolvedValue({
+      cachedBlocks: [],
+      missingBlocks: request.blocks,
+    });
+    const provider = createProvider();
+    vi.mocked(provider.translateStream).mockImplementation(async (_settings, _key, _request, options) => {
+      options?.onBlock?.({ id: 'one', translatedText: '一' });
+      throw new Error('incomplete stream');
+    });
+    const published: unknown[] = [];
+
+    await expect(
+      translateStreamWithCache(provider, request, new AbortController().signal, (block) => published.push(block)),
+    ).rejects.toThrow('incomplete stream');
+    expect(published).toEqual([]);
+  });
+
+  it('publishes a complete stream response in source order', async () => {
+    mocks.lookupTranslationCache.mockResolvedValue({
+      cachedBlocks: [{ id: 'one', translatedText: '一' }],
+      missingBlocks: [{ id: 'two', text: 'Two' }],
+    });
+    const provider = createProvider();
+    vi.mocked(provider.translateStream).mockResolvedValue({
+      model: 'example-model',
+      blocks: [{ id: 'two', translatedText: '二' }],
+      isStreaming: true,
+      usage: { inputTokens: 8, outputTokens: 4, kind: 'actual' },
+    });
+    const published: string[] = [];
+
+    await translateStreamWithCache(provider, request, new AbortController().signal, (block) => {
+      published.push(block.translatedText);
+    });
+    expect(published).toEqual(['一', '二']);
   });
 });
 

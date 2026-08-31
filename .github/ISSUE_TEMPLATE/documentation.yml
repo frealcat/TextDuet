@@ -1,0 +1,73 @@
+name: Documentation issue / 文档问题
+description: Report inaccurate, missing, or unclear public documentation. / 报告不准确、缺失或难以理解的公开文档。
+title: "[Docs] "
+labels:
+  - documentation
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for README, installation, updates, privacy, development, FAQ, or compatibility documentation.
+
+        本表单用于 README、安装、更新、隐私、开发、FAQ 或兼容性文档问题。
+
+        **Do not include API keys, authentication headers, private URLs, account information, unpublished text, page contents, or sensitive screenshots.**
+
+        **不得提交 API Key、认证头、私密 URL、账户信息、未公开文本、网页正文或敏感截图。**
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Documentation area / 文档范围
+      options:
+        - README or product overview / README 或产品概览
+        - Installation and updates / 安装与更新
+        - Source build and development / 源码构建与开发
+        - Permissions or privacy / 权限或隐私
+        - Provider and cost guidance / Provider 与费用说明
+        - Compatibility or troubleshooting / 兼容性或排错
+        - FAQ or translation / FAQ 或翻译
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: input
+    id: document_url
+    attributes:
+      label: Public document URL (optional) / 公开文档 URL（可选）
+      description: Link to a public page or repository file only. Remove private paths and query tokens. / 仅链接公开网页或仓库文件；删除私密路径和查询参数中的令牌。
+      placeholder: https://frealcat.github.io/TextDuet/privacy/
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is inaccurate or missing? / 哪些内容不准确或缺失？
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested_change
+    attributes:
+      label: Suggested correction (optional) / 建议修改（可选）
+      description: Provide concise wording or a link to authoritative public sources. / 提供简洁措辞或权威公开来源链接。
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Affected language / 受影响语言
+      options:
+        - English / 英文
+        - Simplified Chinese / 简体中文
+        - Both / 两者
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy_confirmation
+    attributes:
+      label: Privacy confirmation / 隐私确认
+      options:
+        - label: I removed API keys, authentication headers, private URLs, account data, unpublished text, page contents, and sensitive screenshots. / 我已移除 API Key、认证头、私密 URL、账户数据、未公开文本、网页正文和敏感截图。
+          required: true

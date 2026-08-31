@@ -8,6 +8,7 @@ import type {
   TranslationEstimateResponse,
 } from '@/src/core/contracts';
 import {
+  buildPublicProviderSettings,
   parseCompatibilityPageSnapshot,
   parseConfiguredProviderSettings,
   parsePageTranslationState,
@@ -25,9 +26,21 @@ import { requestFreeformCompletion, FreeformCompletionError } from '@/src/provid
 import { buildI18nBatchPrompt } from '@/src/i18n/i18n-prompt';
 import {
   getApiKey,
+  clearVaultAndLegacySecrets,
+  createVaultAndMigrate,
+  unlockVaultAndMigrate,
+  getVaultStatus,
+  lockVault,
+  migrateLegacySecrets,
   providerSettingsStorage,
+  captureSecretLifecycleToken,
   saveApiKey,
+  type SecretLifecycleToken,
 } from '@/src/storage/settings';
+import {
+  VaultLockedError,
+  VaultNotInitializedError,
+} from '@/src/storage/vault';
 import {
   clearCostUsage,
   getLocalUsageHistory,
@@ -42,12 +55,20 @@ import {
   getTranslationCacheDashboard,
 } from '@/src/storage/translation-cache';
 import { normalizeProviderLanguagePreferences, resolveTargetLanguage } from '@/src/core/defaults';
-import { writeActiveModelToOriginCache } from '@/src/storage/provider-models';
+import { hasCombinedProviderTransition, writeActiveModelToOriginCache } from '@/src/storage/provider-models';
+import {
+  confirmTranslationConsent,
+  getTranslationConsent,
+} from '@/src/storage/translation-consent';
+import { createStorageReadiness } from '@/src/background/storage-readiness';
+import { createStreamRequestController } from '@/src/background/stream-request-controller';
+import { extractI18nTranslations } from '@/src/i18n/response';
 
 const provider = new OpenAiCompatibleProvider();
 const requestControllersByTab = new Map<number, Set<AbortController>>();
 const LAST_TRANSLATED_TAB_ID_KEY = 'textduet:last-translated-tab-id';
 const LAST_WEB_TAB_ID_KEY = 'textduet:last-web-tab-id';
+const storageReadiness = createStorageReadiness(initializeStorageSecurity);
 
 // ---- Stream port disconnect handling ----
 //
@@ -110,19 +131,36 @@ function safeStreamPostMessage(
 }
 
 export default defineBackground(() => {
-  void restrictStorageAccess();
+  // Start eagerly, while keeping failures retryable for the first user event.
+  void storageReadiness.ensure().catch(() => undefined);
   void registerSelectionMenu();
   browser.contextMenus?.onClicked.addListener((info, tab) => {
     if (info.menuItemId !== 'textduet-translate-selection' || !tab?.id || !info.selectionText) return;
-    void startSelectionTranslation(tab.id, info.frameId || 0, info.selectionText);
+    // Context-menu events bypass runtime.onMessage, so explicitly wait for
+    // storage hardening before reading settings or injecting the translator.
+    void storageReadiness
+      .ensure()
+      .then(() => startSelectionTranslation(tab.id as number, info.frameId || 0, info.selectionText as string))
+      .catch((error: unknown) => {
+        console.warn('[textduet] selection translation skipped: storage is not ready', error);
+      });
   });
   browser.tabs.onRemoved.addListener((tabId) => {
     abortTabTranslation(tabId);
-    void clearLastTranslatedTab(tabId);
-    void clearLastWebTab(tabId);
+    void storageReadiness
+      .ensure()
+      .then(() => Promise.all([clearLastTranslatedTab(tabId), clearLastWebTab(tabId)]))
+      .catch((error: unknown) => {
+        console.warn('[textduet] tab cleanup skipped: storage is not ready', error);
+      });
   });
   browser.tabs.onActivated.addListener(({ tabId }) => {
-    void rememberWebTab(tabId);
+    void storageReadiness
+      .ensure()
+      .then(() => rememberWebTab(tabId))
+      .catch((error: unknown) => {
+        console.warn('[textduet] active-tab bookkeeping skipped: storage is not ready', error);
+      });
   });
 
   browser.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
@@ -141,25 +179,49 @@ export default defineBackground(() => {
   });
   browser.runtime.onConnect.addListener((port) => {
     if (port.name !== 'textduet-translation-stream') return;
-    const tabId = port.sender?.tab?.id;
-    if (!tabId) return;
-    const controller = new AbortController();
-    let requestInFlight = false;
-    registerController(tabId, controller);
+    let tabId: number;
+    try {
+      tabId = assertTabSender(port.sender || {} as Browser.runtime.MessageSender);
+    } catch {
+      // Reject ports from extension pages, other extensions, and non-web
+      // frames before registering a controller or accepting a request.
+      try { port.disconnect(); } catch { /* already disconnected */ }
+      return;
+    }
+    const requestController = createStreamRequestController();
     port.onMessage.addListener((rawMessage) => {
+      if (requestController.isClosed()) return;
       if (rawMessage?.type !== 'TRANSLATE_BATCH_STREAM') return;
-      if (requestInFlight) {
+      try {
+        assertTabSender(port.sender || {} as Browser.runtime.MessageSender);
+      } catch {
+        safeStreamPostMessage(port, { type: 'TRANSLATION_ERROR', message: '翻译请求必须来自网页内容脚本' });
+        try { port.disconnect(); } catch { /* already disconnected */ }
+        return;
+      }
+      const controller = requestController.start();
+      if (!controller) {
         safeStreamPostMessage(port, { type: 'TRANSLATION_ERROR', message: '已有翻译请求正在进行' });
         return;
       }
-      requestInFlight = true;
+      // A cleanly completed port may be reused. Clear the prior completion
+      // marker so a later disconnect during this new request is diagnosed as
+      // a lifecycle interruption instead of being mistaken for a clean close.
+      completedStreamPorts.delete(port);
+      // A port may be reused sequentially by a caller. Allocate and register
+      // a fresh controller for each accepted request so STOP_ACTIVE_TAB can
+      // cancel every request, including one sent after an earlier request's
+      // finally block unregistered its controller.
+      registerController(tabId, controller);
       void (async () => {
         try {
+          await storageReadiness.ensure();
           const parsed = parseRuntimeMessage(rawMessage);
           if (parsed.type !== 'TRANSLATE_BATCH_STREAM') throw new Error('流式请求格式无效');
-          const response = await translateStreamWithCache(provider, parsed.request, controller.signal, (block) => {
-            safeStreamPostMessage(port, { type: 'TRANSLATION_BLOCK', block });
-          });
+          // The Service Worker publishes only the fully validated response.
+          // Sending individual provider chunks would let malformed streams
+          // leave partial DOM output in the content script.
+          const response = await translateStreamWithCache(provider, parsed.request, controller.signal, () => undefined);
           safeStreamPostMessage(port, { type: 'TRANSLATION_COMPLETE', response });
         } catch (error) {
           safeStreamPostMessage(port, {
@@ -167,13 +229,19 @@ export default defineBackground(() => {
             message: error instanceof Error ? error.message : '网页翻译失败',
           });
         } finally {
-          requestInFlight = false;
           unregisterController(tabId, controller);
+          requestController.finish(controller);
         }
       })();
     });
     port.onDisconnect.addListener(() => {
-      controller.abort();
+      const controller = requestController.close();
+      controller?.abort();
+      // A port can disconnect before it ever sends a request. Remove the
+      // controller here as well as in the request's finally block so idle
+      // ports do not retain tab-scoped cancellation state. unregister is
+      // idempotent, which keeps the disconnect/completion race harmless.
+      if (controller) unregisterController(tabId, controller);
       if (disconnectedStreamPorts.has(port)) return;
       if (completedStreamPorts.has(port)) {
         // Content script disconnected cleanly after a completed stream; no
@@ -191,7 +259,76 @@ async function handleMessage(
   message: RuntimeMessage,
   sender: Browser.runtime.MessageSender,
 ): Promise<unknown> {
+  // CLEAR_VAULT is a destructive lifecycle boundary. Validate its sender and
+  // advance the secret generation before waiting for one-time storage
+  // hardening; otherwise a concurrent SAVE_PROVIDER_SETTINGS can remain in
+  // its preflight await and enqueue a key write after the clear intent.
+  if (message.type === 'CLEAR_VAULT') {
+    assertTrustedExtensionSender(sender);
+    const clearPromise = clearVaultAndLegacySecrets();
+    const [readinessResult, secretResult, cacheResult] = await Promise.allSettled([
+      storageReadiness.ensure(),
+      clearPromise,
+      clearTranslationCache(),
+    ]);
+    if (secretResult.status === 'rejected') throw secretResult.reason;
+    if (readinessResult.status === 'rejected') throw readinessResult.reason;
+    if (cacheResult.status === 'rejected') throw cacheResult.reason;
+    return { exists: false, isUnlocked: false, version: null };
+  }
+
+  // Capture SAVE_PROVIDER_SETTINGS at message-entry time, before the shared
+  // readiness gate. A save that is already waiting for initialization must be
+  // invalidated when a later CLEAR_VAULT advances the lifecycle generation.
+  const secretLifecycleToken = (
+    message.type === 'SAVE_PROVIDER_SETTINGS'
+    || message.type === 'CREATE_VAULT'
+    || message.type === 'UNLOCK_VAULT'
+    || message.type === 'LOCK_VAULT'
+  )
+    ? captureSecretLifecycleToken()
+    : undefined;
+  await storageReadiness.ensure();
   switch (message.type) {
+    case 'GET_VAULT_STATUS':
+      assertTrustedExtensionSender(sender);
+      return getVaultStatus();
+
+    case 'CREATE_VAULT': {
+      assertTrustedExtensionSender(sender);
+      const result = await createVaultAndMigrate(message.password, secretLifecycleToken);
+      if (result.migration.discardedPersistentKeyCount > 0) {
+        console.warn('[textduet] legacy persistent key data was discarded during vault creation');
+      }
+      return result.status;
+    }
+
+    case 'UNLOCK_VAULT': {
+      assertTrustedExtensionSender(sender);
+      const result = await unlockVaultAndMigrate(message.password, secretLifecycleToken);
+      if (result.migration.discardedPersistentKeyCount > 0) {
+        console.warn('[textduet] legacy persistent key data was discarded during vault unlock');
+      }
+      return result.status;
+    }
+
+    case 'LOCK_VAULT':
+      assertTrustedExtensionSender(sender);
+      return lockVault(secretLifecycleToken);
+
+    case 'CLEAR_VAULT_CACHE':
+      assertTrustedExtensionSender(sender);
+      await clearTranslationCache();
+      return { ok: true, message: '本地翻译缓存已清空' } satisfies OperationResult;
+
+    case 'GET_TRANSLATION_CONSENT':
+      assertTrustedExtensionSender(sender);
+      return getTranslationConsent();
+
+    case 'CONFIRM_TRANSLATION_CONSENT':
+      assertTrustedExtensionSender(sender);
+      return confirmTranslationConsent();
+
     case 'GET_PROVIDER_SETTINGS':
       assertTrustedExtensionSender(sender);
       return getPublicProviderSettings();
@@ -211,7 +348,9 @@ async function handleMessage(
       const settings = parseConfiguredProviderSettings(
         await providerSettingsStorage.getValue(),
       );
-      const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
+      const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl, {
+        apiKeyByOrigin: settings.apiKeyByOrigin,
+      });
       return fetchProviderBalance(settings, apiKey);
     }
 
@@ -247,7 +386,7 @@ async function handleMessage(
 
     case 'SAVE_PROVIDER_SETTINGS':
       assertTrustedExtensionSender(sender);
-      return saveProviderSettings(message.settings, message.apiKey);
+      return saveProviderSettings(message.settings, message.apiKey, secretLifecycleToken);
 
     case 'TEST_PROVIDER':
       assertTrustedExtensionSender(sender);
@@ -292,6 +431,7 @@ async function handleMessage(
       return requestSelectionTranslation(message.text, assertTabSender(sender), sender.frameId || 0);
 
     case 'TRANSLATE_I18N_BATCH':
+      assertTrustedExtensionSender(sender);
       return translateI18nBatch(message);
 
     default:
@@ -301,18 +441,44 @@ async function handleMessage(
 
 async function getPublicProviderSettings(): Promise<PublicProviderSettings> {
   const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
-  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
-  return { ...settings, hasApiKey: Boolean(apiKey) };
+  // TD-2026-028: resolve the key through the per-origin map first so the
+  // hasApiKey flag reflects the *current* baseUrl, not the legacy global
+  // slot (which keeps only the last saved key).
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl, {
+    apiKeyByOrigin: settings.apiKeyByOrigin,
+  }).catch((error: unknown) => {
+    if (error instanceof VaultLockedError || error instanceof VaultNotInitializedError) return '';
+    throw error;
+  });
+  // The stored settings object carries the raw key (TD-2026-WS3); the
+  // public response must never include it. buildPublicProviderSettings
+  // strips apiKey / apiKeyByOrigin before the payload crosses the
+  // runtime boundary.
+  return buildPublicProviderSettings(settings, Boolean(apiKey));
 }
 
 async function saveProviderSettings(
   settings: ProviderSettings,
   apiKey?: string,
+  lifecycleToken?: SecretLifecycleToken,
 ): Promise<OperationResult> {
+  // Capture before the first await. CLEAR_VAULT advances this generation at
+  // its call site, invalidating a save that is still reading old settings.
+  const effectiveLifecycleToken = lifecycleToken ?? captureSecretLifecycleToken();
   const validatedSettings = normalizeProviderLanguagePreferences(parseConfiguredProviderSettings(settings));
-  await providerSettingsStorage.setValue(validatedSettings);
+  const previousSettings = normalizeProviderLanguagePreferences(
+    parseProviderSettings(await providerSettingsStorage.getValue()),
+  );
+  const persistenceChanged = previousSettings.apiKeyPersistence !== validatedSettings.apiKeyPersistence;
+  // Key migration is origin-scoped. A single save that changes both the
+  // Provider origin and persistence mode cannot know whether an empty key
+  // means "keep" or "replace"; moving by the new origin could orphan or
+  // delete the old Provider's key. Require two explicit saves instead.
+  if (hasCombinedProviderTransition(previousSettings, validatedSettings)) {
+    throw new Error('请先单独保存模型服务地址，再单独切换 API Key 保存方式');
+  }
 
-  if (apiKey?.trim()) {
+  if (apiKey?.trim() || persistenceChanged) {
     // The public settings view omits `apiKeyByOrigin` for runtime
     // contract safety; pull the per-origin map off the same object
     // via a cast so the storage layer can keep the per-provider
@@ -321,19 +487,32 @@ async function saveProviderSettings(
       apiKeyByOrigin?: Record<string, string>;
     };
     await saveApiKey(
-      apiKey.trim(),
+      apiKey?.trim() || '',
       validatedSettings.apiKeyPersistence,
       validatedSettings.baseUrl,
-      { apiKeyByOrigin: validatedWithKeyMap.apiKeyByOrigin },
+      {
+        apiKeyByOrigin: validatedWithKeyMap.apiKeyByOrigin,
+        modeChanged: persistenceChanged,
+        // Keep the settings item and the secret stores in one compensating
+        // transaction. saveApiKey commits this redacted value with its
+        // queue-free internal setter while holding the lifecycle lock.
+        commitSettings: validatedSettings,
+        lifecycleToken: effectiveLifecycleToken,
+      },
     );
+    return { ok: true, message: '配置已保存' };
   }
+
+  await providerSettingsStorage.setValue(validatedSettings, effectiveLifecycleToken);
 
   return { ok: true, message: '配置已保存' };
 }
 
 async function testProvider(): Promise<OperationResult> {
   const settings = normalizeProviderLanguagePreferences(parseConfiguredProviderSettings(await providerSettingsStorage.getValue()));
-  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl, {
+    apiKeyByOrigin: settings.apiKeyByOrigin,
+  });
   await provider.testConnection(settings, apiKey);
   return { ok: true, message: '连接成功，模型已返回测试翻译' };
 }
@@ -360,6 +539,7 @@ async function estimateTranslationRequest(
 }
 
 async function startActiveTabTranslation(targetLanguage: string, sourceLanguage = 'auto'): Promise<OperationResult> {
+  await storageReadiness.ensure();
   const tab = await getActiveTab();
   const settings = parseConfiguredProviderSettings(await providerSettingsStorage.getValue());
   abortTabTranslation(tab.id);
@@ -416,6 +596,7 @@ async function configureSelectionQuickAction(
 }
 
 async function getSelectionTargetTab(): Promise<{ id: number }> {
+  await storageReadiness.ensure();
   const stored = await browser.storage.session.get(LAST_WEB_TAB_ID_KEY);
   const storedTabId = stored[LAST_WEB_TAB_ID_KEY];
   if (Number.isInteger(storedTabId) && (storedTabId as number) >= 0) {
@@ -443,6 +624,7 @@ async function registerSelectionMenu(): Promise<void> {
 }
 
 async function startSelectionTranslation(tabId: number, frameId: number, text: string): Promise<void> {
+  await storageReadiness.ensure();
   const settings = normalizeProviderLanguagePreferences(parseProviderSettings(await providerSettingsStorage.getValue()));
   await browser.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ['/translator.js'] });
   await browser.tabs.sendMessage(tabId, {
@@ -545,6 +727,7 @@ async function createPageCompatibilityDiagnostic(includePath: boolean) {
 }
 
 async function getLastTranslatedTabDetails(): Promise<{ id: number; url: string }> {
+  await storageReadiness.ensure();
   const stored = await browser.storage.session.get(LAST_TRANSLATED_TAB_ID_KEY);
   const tabId = stored[LAST_TRANSLATED_TAB_ID_KEY];
   if (!Number.isInteger(tabId) || (tabId as number) < 0) {
@@ -574,12 +757,14 @@ function isWebPageUrl(url: string | undefined): url is string {
 }
 
 async function rememberWebTab(tabId: number): Promise<void> {
+  await storageReadiness.ensure();
   const tab = await browser.tabs.get(tabId).catch(() => undefined);
   if (!tab?.id || !isWebPageUrl(tab.url)) return;
   await browser.storage.session.set({ [LAST_WEB_TAB_ID_KEY]: tab.id });
 }
 
 async function clearLastWebTab(tabId: number): Promise<void> {
+  await storageReadiness.ensure();
   const stored = await browser.storage.session.get(LAST_WEB_TAB_ID_KEY);
   if (stored[LAST_WEB_TAB_ID_KEY] === tabId) {
     await browser.storage.session.remove(LAST_WEB_TAB_ID_KEY);
@@ -587,7 +772,7 @@ async function clearLastWebTab(tabId: number): Promise<void> {
 }
 
 function assertTabSender(sender: Browser.runtime.MessageSender): number {
-  if (!sender.tab?.id) {
+  if (sender.id !== browser.runtime.id || !sender.tab?.id || !isWebPageUrl(sender.url || sender.tab.url)) {
     throw new Error('翻译请求必须来自网页内容脚本');
   }
   return sender.tab.id;
@@ -621,6 +806,7 @@ function unregisterController(tabId: number, controller: AbortController): void 
 }
 
 async function clearLastTranslatedTab(tabId: number): Promise<void> {
+  await storageReadiness.ensure();
   const stored = await browser.storage.session.get(LAST_TRANSLATED_TAB_ID_KEY);
   if (stored[LAST_TRANSLATED_TAB_ID_KEY] === tabId) {
     await browser.storage.session.remove(LAST_TRANSLATED_TAB_ID_KEY);
@@ -635,10 +821,31 @@ async function restrictStorageAccess(): Promise<void> {
     setAccessLevel?: (options: { accessLevel: 'TRUSTED_CONTEXTS' }) => Promise<void>;
   };
 
+  if (typeof localStorage.setAccessLevel !== 'function' || typeof sessionStorage.setAccessLevel !== 'function') {
+    throw new Error('浏览器不支持受信存储访问控制');
+  }
   await Promise.all([
-    localStorage.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }),
-    sessionStorage.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' }),
+    localStorage.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
+    sessionStorage.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
   ]);
+}
+
+/**
+ * Restrict browser storage before the first migration/read. Failure is
+ * fail-closed: do not migrate or expose secrets when trusted-context access
+ * cannot be established.
+ */
+async function initializeStorageSecurity(): Promise<void> {
+  await restrictStorageAccess();
+  try {
+    const result = await migrateLegacySecrets();
+    if (result.discardedPersistentKeyCount > 0) {
+      console.warn('[textduet] legacy persistent key data was removed because no unlocked vault was available');
+    }
+  } catch (error) {
+    console.warn('[textduet] legacy secret migration deferred until storage is available');
+    throw error;
+  }
 }
 
 // ---- User-locale dictionary translation (TD-2026-024) ----
@@ -653,7 +860,9 @@ async function translateI18nBatch(
   message: Extract<RuntimeMessage, { type: 'TRANSLATE_I18N_BATCH' }>,
 ): Promise<I18nBatchTranslationResult> {
   const settings = parseProviderSettings(await providerSettingsStorage.getValue());
-  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl);
+  const apiKey = await getApiKey(settings.apiKeyPersistence, settings.baseUrl, {
+    apiKeyByOrigin: settings.apiKeyByOrigin,
+  });
   if (!apiKey) {
     return { ok: false, errorMessage: '请先在 01 模型服务配置 API Key' };
   }
@@ -696,33 +905,4 @@ async function translateI18nBatch(
       errorMessage: error instanceof Error ? error.message : '翻译失败',
     };
   }
-}
-
-/**
- * Parse the JSON object the model returned and pick only the keys we
- * asked for. Anything else is silently dropped — the model often
- * echoes meta fields like "target_locale" back, which we don't want.
- */
-function extractI18nTranslations(
-  raw: string,
-  expectedKeys: string[],
-): Record<string, string> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // Some models wrap JSON in ``` fences. Strip and retry.
-    const fenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-    parsed = JSON.parse(fenced);
-  }
-  if (!parsed || typeof parsed !== 'object') return {};
-  const obj = parsed as Record<string, unknown>;
-  const out: Record<string, string> = {};
-  for (const key of expectedKeys) {
-    const value = obj[key];
-    if (typeof value === 'string' && value.length > 0) {
-      out[key] = value;
-    }
-  }
-  return out;
 }

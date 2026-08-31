@@ -1,20 +1,30 @@
 # Third-Party Notices
 
-TextDuet includes or is built with the following direct dependencies and bundled runtime dependencies. Other transitive dependencies remain subject to the license metadata and notices shipped by their respective packages.
+TextDuet includes or is built with the following direct dependencies. The
+release process also emits `THIRD_PARTY_LICENSES.json`, a machine-readable
+report of every package in the locked dependency graph (including transitive
+build dependencies), with its version, source archive and declared SPDX
+license. Other transitive packages remain subject to the license metadata and
+notices shipped by their respective packages.
 
-| Dependency | Copyright / attribution | License |
-| --- | --- | --- |
-| React and React DOM | Copyright Meta Platforms, Inc. and affiliates | MIT |
-| Zod | Copyright 2025 Colin McDonnell | MIT |
-| Radix UI Radio Group | Copyright 2022 WorkOS | MIT |
-| Lucide React | Copyright 2026 Lucide Icons and Contributors | ISC |
-| Feather-derived Lucide icons | Copyright 2013-present Cole Bemis | MIT |
-| WXT and WXT React module | Copyright 2023 Aaron and WXT contributors | MIT |
-| Apache ECharts | Copyright 2017-2026 The Apache Software Foundation | Apache-2.0 |
-| zrender | Copyright 2017 Baidu Inc. | BSD-3-Clause |
-| tslib | Copyright Microsoft Corporation | 0BSD |
+| Dependency (version) | Copyright / attribution | License | Distributed in extension |
+| --- | --- | --- | --- |
+| React 19.2.8 and React DOM 19.2.8 | Copyright Meta Platforms, Inc. and affiliates | MIT | Yes |
+| Zod 4.4.3 | Copyright Colin McDonnell | MIT | Yes |
+| Radix UI Radio Group 1.4.7 | Copyright WorkOS | MIT | Yes |
+| WXT 0.21.4 and WXT React module 1.2.2 | Copyright Aaron Klinker and WXT contributors | MIT | Build-time only |
 
-Apache ECharts is licensed under Apache-2.0; the complete license text is included in the root `LICENSE` file. Its bundled runtime dependencies include zrender and tslib under the terms below.
+The complete Apache-2.0 license text for TextDuet is included in the root
+`LICENSE` file. Dependency source archives and their declared license IDs are
+listed in `THIRD_PARTY_LICENSES.json`; this notice records the attribution for
+the direct dependencies used by the extension.
+
+The following development dependency is used only by deterministic browser
+regression harnesses and is not bundled into the extension:
+
+| Test dependency (version) | Copyright / attribution | License | Distributed in extension |
+| --- | --- | --- | --- |
+| Playwright 1.62.1 | Copyright Microsoft Corporation | Apache-2.0 | No (test-time only) |
 
 ## MIT License
 
@@ -35,53 +45,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-## ISC License
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-## BSD 3-Clause License
-
-Copyright (c) 2017, Baidu Inc. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
-
-## 0BSD License
-
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.

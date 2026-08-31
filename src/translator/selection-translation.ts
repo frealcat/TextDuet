@@ -1,9 +1,11 @@
 import { resolveReadableTranslationColor } from '@/src/core/translation-colors';
 import type { TranslatedBlock } from '@/src/core/contracts';
 import { collectStyleContext } from './style-context';
+import {
+  SELECTION_ERROR_CLASS,
+  SELECTION_TRANSLATION_CLASS,
+} from './page-status';
 
-const SELECTION_CLASS = 'textduet-selection-translation';
-const SELECTION_ERROR_CLASS = 'textduet-selection-error';
 const SELECTION_ANCHOR_SELECTOR = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'blockquote', 'td', 'figcaption',
   'header a', 'header p', 'header li', 'nav a', '[role="navigation"] a',
@@ -20,11 +22,14 @@ interface SelectionSnapshot {
   anchor: HTMLElement;
   text: string;
   range: Range;
+  revision: number;
 }
 
 let currentSelection: SelectionSnapshot | null = null;
+let selectionRevision = 0;
 
 export function captureSelectionAnchor(): HTMLElement | null {
+  selectionRevision += 1;
   const selection = window.getSelection();
   const anchor = findSelectionAnchor(selection?.anchorNode || null);
   if (!selection || selection.rangeCount === 0 || !anchor) {
@@ -35,6 +40,7 @@ export function captureSelectionAnchor(): HTMLElement | null {
     anchor,
     text: normalizeSelectionText(selection.toString()),
     range: selection.getRangeAt(0).cloneRange(),
+    revision: selectionRevision,
   };
   return anchor;
 }
@@ -50,9 +56,9 @@ export function renderSelectionTranslation(
   if (!anchor) throw new Error('无法定位选中文本');
   const paragraph = getParagraph(anchor);
   const host = getInsertionHost(paragraph);
-  host.parentElement?.querySelector(`:scope > .${SELECTION_CLASS}`)?.remove();
+  host.parentElement?.querySelector(`:scope > .${SELECTION_TRANSLATION_CLASS}`)?.remove();
   const element = document.createElement('span');
-  element.className = SELECTION_CLASS;
+  element.className = SELECTION_TRANSLATION_CLASS;
   element.lang = targetLanguage;
   element.textContent = translated.translatedText;
   element.style.display = 'block';
@@ -88,8 +94,14 @@ export function getSelectedText(): string {
   return normalizeSelectionText(window.getSelection()?.toString() || '');
 }
 
-export function getCapturedSelection(): { anchor: HTMLElement; text: string } | null {
-  return currentSelection ? { anchor: currentSelection.anchor, text: currentSelection.text } : null;
+export function getCapturedSelection(): { anchor: HTMLElement; text: string; revision: number } | null {
+  return currentSelection
+    ? {
+        anchor: currentSelection.anchor,
+        text: currentSelection.text,
+        revision: currentSelection.revision,
+      }
+    : null;
 }
 
 function findSelectionAnchor(node: Node | null): HTMLElement | null {

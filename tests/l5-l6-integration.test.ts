@@ -35,10 +35,7 @@ function translated(id: string, text: string): TranslatedBlock {
 
 describe('L5 TranslationMemory integration (processLoadedContent cache split)', () => {
   it('returns the cached translation for an element whose text was already translated', async () => {
-    const mem = new TranslationMemory({
-      disableBroadcastChannel: true,
-      storageBackend: null,
-    });
+    const mem = new TranslationMemory();
     try {
       // First put: simulate a previous run translating this text.
       await mem.put('Hello', 'en', 'gpt-4o-mini', translated('b1', '你好'));
@@ -65,10 +62,7 @@ describe('L5 TranslationMemory integration (processLoadedContent cache split)', 
   it('memory put/get roundtrips across L1 (WeakMap) and L2 (Map) by element reference', async () => {
     const { root, document: doc } = makeFragment('<p id="t">Hello</p>');
     const el = root.querySelector('#t') as HTMLElement;
-    const mem = new TranslationMemory({
-      disableBroadcastChannel: true,
-      storageBackend: null,
-    });
+    const mem = new TranslationMemory();
     try {
       await mem.put('Hello', 'en', 'gpt-4o-mini', translated('b1', '你好'), el);
       const hit = await mem.get('Hello', 'en', 'gpt-4o-mini', el);

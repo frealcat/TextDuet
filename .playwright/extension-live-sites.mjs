@@ -45,7 +45,8 @@ assert(playwrightEntry, 'PLAYWRIGHT_ENTRY is required');
 assert(chromeExecutable, 'CHROME_EXECUTABLE is required');
 assert(sites.length > 0, 'TEXTDUET_SITE_IDS did not match a configured live site');
 
-const { chromium } = await import(playwrightEntry);
+const playwrightModule = await import(playwrightEntry);
+const { chromium } = playwrightModule.default ?? playwrightModule;
 await mkdir(resolve('.playwright/browser-profile'), { recursive: true });
 const harnessDir = await mkdtemp(resolve('.playwright/browser-profile/live-sites-'));
 const extensionDir = resolve(harnessDir, 'extension');
@@ -348,22 +349,33 @@ async function getServiceWorker(browserContext) {
 }
 
 async function saveProviderSettings(page, providerSettings) {
-  const result = await page.evaluate(async ({ baseUrl, apiKey, model }) => {
-    return chrome.runtime.sendMessage({
+  const { baseUrl, apiKey, model } = providerSettings;
+  const settings = {
+    provider: 'openai-compatible',
+    baseUrl,
+    model,
+    targetLanguage: 'zh-CN',
+    displayMode: 'bilingual',
+    customSystemPrompt: '',
+  };
+  await saveProviderSettingsStep(page, { ...settings, apiKeyPersistence: 'session' }, apiKey);
+  const vault = await page.evaluate((password) =>
+    chrome.runtime.sendMessage({ type: 'CREATE_VAULT', password }), 'browser-test-vault-2026');
+  if (!vault?.isUnlocked) throw new Error('test vault could not be created');
+  await saveProviderSettingsStep(page, { ...settings, apiKeyPersistence: 'local' });
+  const consent = await page.evaluate(() =>
+    chrome.runtime.sendMessage({ type: 'CONFIRM_TRANSLATION_CONSENT' }));
+  if (!consent?.isConfirmed) throw new Error('translation consent could not be confirmed');
+}
+
+async function saveProviderSettingsStep(page, settings, apiKey) {
+  const response = await page.evaluate(({ nextSettings, key }) =>
+    chrome.runtime.sendMessage({
       type: 'SAVE_PROVIDER_SETTINGS',
-      settings: {
-        provider: 'openai-compatible',
-        baseUrl,
-        model,
-        apiKeyPersistence: 'local',
-        targetLanguage: 'zh-CN',
-        displayMode: 'bilingual',
-        customSystemPrompt: '',
-      },
-      apiKey,
-    });
-  }, providerSettings);
-  assert(result?.ok, 'Provider settings could not be saved');
+      settings: nextSettings,
+      ...(key ? { apiKey: key } : {}),
+    }), { nextSettings: settings, key: apiKey });
+  if (!response?.ok) throw new Error(response?.message || 'Provider settings could not be saved');
 }
 
 async function sendTrustedMessage(page, message) {

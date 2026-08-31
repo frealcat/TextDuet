@@ -22,7 +22,7 @@ export function TranslationAppearanceControls({
   const isColorValid = isSupportedTranslationColor(translationColor);
 
   return (
-    <div className="appearance-controls" aria-label={t('阅读显示设置')}>
+    <div className="appearance-controls" aria-label={t('appearance.aria')}>
       <label className="select-field">
         <span>{t('appearance.displayMode.label')}</span>
         <select
@@ -51,7 +51,7 @@ export function TranslationAppearanceControls({
         </summary>
         <div className="color-picker-panel">
           <label className="native-color-field">
-            <span><PaletteIcon size={14} /> 取色盘</span>
+            <span><PaletteIcon size={14} /> {t('appearance.translationColor.pickerLabel')}</span>
             <input
               type="color"
               value={toNativeColor(translationColor)}
@@ -65,7 +65,7 @@ export function TranslationAppearanceControls({
               value={translationColor}
               disabled={disabled}
               aria-invalid={!isColorValid}
-              placeholder={t('#9c5e2e 或 rgba(156, 94, 46, 0.9)')}
+              placeholder={t('appearance.translationColor.placeholder')}
               spellCheck={false}
               onChange={(event) => onTranslationColorChange(event.target.value)}
             />

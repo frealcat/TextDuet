@@ -1,5 +1,5 @@
 :root {
-  /* TextDuet Design System v2.0 — see design-system/MASTER.md §12–§22
+  /* TextDuet visual token system v2.0.
      6 语义色族 × 5 档 shade;v1.0 名称保留为 v2 值的别名(向后兼容)。
      后续 P4 收口时移除 v1.0 别名,本轮优先保证零视觉变化。 */
 
@@ -1159,6 +1159,40 @@ legend {
   border-top: 1px solid var(--td-border);
 }
 
+.vault-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-border);
+  border-radius: var(--td-radius-2);
+  color: var(--td-text);
+  background: var(--td-surface-muted);
+}
+
+.vault-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.vault-form .primary-button {
+  align-self: end;
+}
+
+.vault-actions {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .vault-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 .diagnostic-controls {
   display: grid;
   grid-template-columns: minmax(180px, 0.7fr) 1fr;
@@ -1399,8 +1433,7 @@ button:disabled {
 
 
 /* ============================================================
-   TextDuet Design System v1.0 — v2 visual upgrade
-   See design-system/MASTER.md
+   TextDuet visual tokens v1.0 — v2 visual upgrade
    ============================================================ */
 
 /* Use installed/fallback UI and serif fonts; extension pages must not fetch
@@ -1688,6 +1721,17 @@ button,
   display: grid;
   gap: 16px;
   min-width: 0;
+  /* Grid items otherwise use their min-content width on narrow extension
+     windows, allowing long diagnostics/chart labels to widen the page. */
+  width: 100%;
+  max-width: 100%;
+}
+
+.td-options-main > *,
+.td-options-main .settings-card,
+.td-options-main .settings-card > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 @media (max-width: 960px) {

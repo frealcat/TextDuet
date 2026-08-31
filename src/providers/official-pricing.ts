@@ -2,8 +2,11 @@ import * as z from 'zod/mini';
 import type { OfficialModelPricing } from '@/src/core/contracts';
 import { getLocalDateKey } from '@/src/core/cost';
 import { getOfficialPricingSource } from '@/src/core/pricing-sources';
+import { readJsonResponseWithLimit } from './response-body';
 
 const OPENROUTER_MODELS_API = 'https://openrouter.ai/api/v1/models';
+/** OpenRouter's model catalogue is larger than normal provider responses. */
+export const MAX_OFFICIAL_PRICING_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 const OpenRouterModelsResponseSchema = z.object({
   data: z.array(z.object({
@@ -33,7 +36,10 @@ export async function fetchOfficialModelPricing(
     });
     if (!response.ok) return { status: 'unavailable' };
 
-    const rawBody: unknown = await response.json();
+    const rawBody: unknown = await readJsonResponseWithLimit(
+      response,
+      MAX_OFFICIAL_PRICING_RESPONSE_BYTES,
+    );
     const parsed = OpenRouterModelsResponseSchema.safeParse(rawBody);
     if (!parsed.success) return { status: 'unavailable' };
 

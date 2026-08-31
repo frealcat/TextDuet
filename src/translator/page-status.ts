@@ -1,5 +1,11 @@
 export const TRANSLATION_CLASS = 'textduet-translation';
 export const SOURCE_CLASS = 'textduet-source';
+/** In-page nodes owned by the optional selected-text action. */
+export const SELECTION_TRANSLATION_CLASS = 'textduet-selection-translation';
+export const SELECTION_ERROR_CLASS = 'textduet-selection-error';
+export const SELECTION_QUICK_ACTION_CLASS = 'textduet-selection-quick-action';
+/** Stable per-element id written by the renderer for later reconciliation. */
+export const SOURCE_BLOCK_ID_ATTRIBUTE = 'data-td-block-id';
 
 let lastKnownPageStatusState: PageStatusState | 'idle' = 'idle';
 let lastStatusMessage = '';
@@ -30,7 +36,7 @@ export function injectPageStyles(): void {
     html[data-textduet-display-mode="source-only"] .${TRANSLATION_CLASS} {
       display: none !important;
     }
-    .textduet-selection-quick-action {
+    .${SELECTION_QUICK_ACTION_CLASS} {
       all: initial !important;
       position: fixed !important;
       z-index: 2147483646 !important;
@@ -52,8 +58,8 @@ export function injectPageStyles(): void {
       user-select: none !important;
       cursor: pointer !important;
     }
-    .textduet-selection-quick-action:hover { background: #7d4b24 !important; }
-    .textduet-selection-translation {
+    .${SELECTION_QUICK_ACTION_CLASS}:hover { background: #7d4b24 !important; }
+    .${SELECTION_TRANSLATION_CLASS} {
       display: block !important;
       margin-top: 0.35em !important;
       font: inherit !important;

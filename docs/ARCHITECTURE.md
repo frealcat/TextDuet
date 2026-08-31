@@ -8,14 +8,20 @@
 - Vitest：核心逻辑单元测试。
 - Zod Mini：运行时消息、配置和模型响应的边界校验，减少各扩展入口的重复打包体积。
 - Radix UI：Popup/Options 中按需使用的无样式交互原语。
-- Lucide React：按图标导入的界面图标。
-- Apache ECharts：Options 的 token 用量折线图；只注册 Line、Grid、Tooltip、Legend 与 CanvasRenderer，不引入 React 包装层或完整图表入口。
+- 项目内 SVG/React 图标：`src/icons/` 中的按需手写图标组件，不引入第三方图标运行时。
+- SVG/React：Options 的 token 用量折线图使用按需加载的手写 SVG 组件，不引入大型图表运行时或远程资产。
 - Chrome Manifest V3：首发运行模型。
 - UI 主题：Popup 与 Options 共享暖纸色、白色表面、赤陶色主操作和赭石色辅助 token；主题只存在于扩展 UI 和网页状态提示样式，不进入 Provider 数据流。
 
 选择 WXT 是为了让后台、Popup、Options 与注入脚本保持独立入口。首版只构建、测试和发布 Chrome Manifest V3；项目不使用运行时远程代码。
 
 项目明确不使用 Next.js。TextDuet 不需要 SSR、Server Components、App Router 或服务端部署；Popup、Options、Service Worker 与 Translator Script 均由 WXT 构建。任何组件库必须支持普通 React/Vite 用法，不能要求 Next.js 运行时。
+
+### `0.2.0` 公开发布边界
+
+`0.2.0` 的 Chrome Web Store、GitHub Release 和 GitHub Pages 是分发与公开文档渠道，不增加项目服务器、翻译代理、账号或遥测。Chrome Web Store 是推荐安装路径；GitHub Release ZIP 需解压后手动加载；源码构建面向贡献者。GitHub Pages 只托管静态公开文档，不接收网页内容、Key、密码、诊断包或模型请求。
+
+当前这些公开材料处于准备状态，不代表已经发布。Chrome Web Store 上传/审核、`v0.2.0` Git tag、GitHub Release 与 Pages 部署必须在最终候选 ZIP、隐私披露和人工验收完成后由项目所有者执行。
 
 ## 2. 组件边界
 
@@ -29,8 +35,9 @@ flowchart TD
     A -->|"不可信模型输出"| B
     B -->|"已校验 ID + 译文"| C
     C -->|"textContent"| D["网页双语 DOM"]
-    B --> S["storage.session / storage.local"]
-    B --> T["IndexedDB\n译文缓存 / 用量账本"]
+    B --> S["storage.session\n会话 Key / 解锁材料"]
+    B --> V["AES-GCM Vault\n持久 API Key"]
+    B --> T["IndexedDB\n加密译文缓存 / 用量账本"]
     O -->|"本地预览/下载请求"| B
     M["Chrome Context Menu\n选区翻译"] --> C
 ```
@@ -47,8 +54,8 @@ flowchart TD
 - 编辑 Provider 配置。
 - 通过阿里云百炼 Qwen 等显式预设填写兼容端点；预设只改善配置体验，不改变协议标识。
 - 在用户点击时申请 API Origin 权限。
-- 将 Key 交给 Service Worker 保存。
-- 不显示已保存 Key 的原文。
+- 只通过受校验的可信消息将用户当次输入的 Key 或保险箱密码交给 Service Worker；不直接访问 Chrome Storage。
+- 只能读取非敏感设置与脱敏状态；不显示已保存 Key、解密缓存或保险箱密码。
 
 ### Service Worker
 
@@ -57,6 +64,7 @@ flowchart TD
 - 执行模型调用、SSE/JSON 响应验证和错误映射。
 - 维护按标签页取消的流式 Port。
 - 按需将 `translator.js` 注入当前活动标签页。
+- 执行首次页面文本外发确认、旧版明文秘密迁移、保险箱解锁与持久缓存的受控读写。
 - 不接受内容脚本传入任意网络 URL。
 
 ### Translator Script
@@ -66,7 +74,7 @@ flowchart TD
 - 提取可见块级文本并分批。
 - 在本次运行中使用受控 MutationObserver 监听文档根节点的新增、变为可见和文本变化，去抖后串行增量处理；复用节点重新插入时失效旧源文本快照。
 - 只发送段落 ID、文本、语言对和已校验译文。
-- 通过 Port 接收完成段落并立即渲染；动态新增内容在当前批次结束后进入下一批。
+- 通过 Port 接收完整且已校验的批次并原子渲染；动态新增内容在当前批次结束后进入下一批。
 - 将已校验译文通过 `textContent` 插入 DOM。
 - 不读取 Storage，不接触 API Key。
 
@@ -84,10 +92,10 @@ src/
   providers/              模型厂商适配层
   storage/                配置和密钥生命周期
 tests/                    单元测试
-docs/                     PRD 与架构决策
+docs/                     公开架构、隐私、安装与兼容性文档
 ```
 
-`docs/PRODUCT-ROADMAP.md` 维护阶段计划与状态，`docs/ITERATION-LOG.md` 维护实际交付与验证证据；根目录 `CHANGELOG.md` 只记录面向用户的发布变化。三者不得替代运行时 schema、PRD 或架构契约。
+根目录 `CHANGELOG.md` 记录面向用户的发布变化；它不替代运行时 schema 或本架构文档。
 
 ## 4. 消息协议
 
@@ -95,13 +103,13 @@ docs/                     PRD 与架构决策
 
 1. 设置：`GET_PROVIDER_SETTINGS`、`SAVE_PROVIDER_SETTINGS`、`TEST_PROVIDER`。
 2. 成本：`GET_COST_DASHBOARD`、`GET_USAGE_HISTORY`、`GET_PROVIDER_BALANCE`、`REFRESH_PROVIDER_PRICING`、`SAVE_COST_SETTINGS`、`CLEAR_USAGE_LEDGER`、`ESTIMATE_TRANSLATION`。
-3. 缓存：`GET_TRANSLATION_CACHE_DASHBOARD`、`CLEAR_TRANSLATION_CACHE`。
+3. 保险箱与缓存：`GET_VAULT_STATUS`、`CREATE_VAULT`、`UNLOCK_VAULT`、`LOCK_VAULT`、`CLEAR_VAULT`、`CLEAR_VAULT_CACHE`、`GET_TRANSLATION_CONSENT`、`CONFIRM_TRANSLATION_CONSENT`、`GET_TRANSLATION_CACHE_DASHBOARD`、`CLEAR_TRANSLATION_CACHE`。
 4. 标签控制：`TRANSLATE_ACTIVE_TAB`、`STOP_ACTIVE_TAB`、`GET_ACTIVE_TAB_TRANSLATION_STATE`、`SET_ACTIVE_TAB_DISPLAY_MODE`、`SET_ACTIVE_MODEL`、`SET_LANGUAGE_PREFERENCES`。
 5. 页面翻译：`START_PAGE_TRANSLATION`、`STOP_PAGE_TRANSLATION`、`SET_PAGE_DISPLAY_MODE`、`GET_TRANSLATION_STATE`、`TRANSLATE_BATCH`、`TRANSLATE_BATCH_STREAM`、`TRANSLATE_SELECTION`。
 
-流式 Port 名为 `textduet-translation-stream`，事件只允许 `TRANSLATION_BLOCK`、`TRANSLATION_COMPLETE` 和 `TRANSLATION_ERROR`；事件先经过 schema 校验，再进入网页渲染。
+流式 Port 名为 `textduet-translation-stream`，事件只允许 `TRANSLATION_BLOCK`、`TRANSLATION_COMPLETE` 和 `TRANSLATION_ERROR`；事件先经过 schema 校验。为避免异常流留下部分 DOM，当前 Service Worker 会缓冲并验证完整批次，网页只处理 `TRANSLATION_COMPLETE`，历史 `TRANSLATION_BLOCK` 事件会被忽略。
 
-所有未知消息先通过 `src/core/schemas.ts` 的 Zod 判别联合解析，再进入业务处理。TypeScript 类型由同一 schema 推导；公开设置、操作结果和翻译批次也在接收上下文再次校验。Schema 使用严格对象，拒绝内容脚本夹带任意 URL、认证字段或未声明参数。
+所有未知消息先通过 `src/core/schemas.ts` 的 Zod 判别联合解析，再进入业务处理。TypeScript 类型由同一 schema 推导；公开设置、操作结果和翻译批次也在接收上下文再次校验。`PublicProviderSettings` 只包含非敏感配置和 `hasApiKey` 等脱敏秘密状态，不能包含 `apiKey`、`apiKeyByOrigin`、保险箱密码或解密缓存。Schema 使用严格对象，拒绝内容脚本夹带任意 URL、认证字段或未声明参数。
 
 ## 5. Provider 适配
 
@@ -134,7 +142,7 @@ MVP 的 `OpenAiCompatibleProvider` 使用 Chat Completions：
 
 - `activeTab`：用户点击后临时访问当前标签页。
 - `scripting`：注入 `translator.js`。
-- `storage`：保存配置以及会话级或本机级 Key。
+- `storage`：保存非敏感配置、受限会话 Key/解锁材料和加密保险箱信封。
 - `contextMenus`：用户右键选中文本后显示选区翻译入口。
 
 可选主机权限：
@@ -150,14 +158,15 @@ MVP 的 `OpenAiCompatibleProvider` 使用 Chat Completions：
 | 数据 | 区域 | 内容脚本可访问 | 备注 |
 | --- | --- | --- | --- |
 | Provider 非敏感配置 | `storage.local` | 否 | Base URL、当前模型、模型列表、语言、显示模式和译文颜色等 |
-| 会话级 API Key | `storage.session` | 否 | 默认，浏览器关闭后清除 |
-| 持久 API Key | `storage.local` | 否 | 用户主动选择，未加密 |
-| 翻译缓存 | IndexedDB（M1） | 否 | 上下文摘要、译文、时间和大小；不含 Key、源文本或 URL |
+| 会话级 API Key | `storage.session` | 否 | 按 API Origin 保存，默认模式，浏览器关闭后清除 |
+| 持久 API Key | `storage.local:textduet.vault` | 否 | AES-GCM 加密；用户主动选择；密码不落盘，浏览器重启后需重新解锁 |
+| 保险箱解锁材料 | `storage.session:textduet.vault.unlock` | 受限可信上下文 | 仅保存派生 AES 密钥，不保存密码；Service Worker 生命周期/浏览器会话内有效 |
+| 翻译缓存 | IndexedDB（M1） | 否 | AES-GCM 密文、上下文摘要、时间和大小；不含 Key、源文本或 URL |
 | 模型价格与每日预算 | `storage.local` | 否 | 不包含密钥或网页文本 |
 | 每日 token/成本账本 | IndexedDB（M1） | 否 | 按本地日期、Provider、模型聚合；账单界面只公开 token |
 | 最近翻译标签页 ID | storage.session | 否 | 仅用于 Options 诊断定位；标签页关闭时清理，不保存 URL 或正文 |
 
-Service Worker 启动后调用 `setAccessLevel(TRUSTED_CONTEXTS)`。这减少内容脚本读取风险，但不能把本地持久存储变成操作系统级加密保险箱。
+Service Worker 启动后调用 `setAccessLevel(TRUSTED_CONTEXTS)`。持久 API Key 和译文缓存由版本化 AES-GCM 保险箱加密；密码不落盘，错误密码无法解密。保险箱锁定时，持久 Key 和持久译文缓存不可用，当前页面仍可使用本次运行中的内存复用。旧版明文 Key、`apiKeyByOrigin`、遗留 Key 槽位会在保险箱已解锁时迁移加密并删除；无法安全迁移的持久 Key 与 v1 明文缓存会删除，用户需重新输入。该机制不等同于操作系统级密码管理器，用户仍应使用强密码并保护浏览器配置文件。
 
 ## 8. 翻译数据流
 
@@ -165,18 +174,19 @@ Service Worker 启动后调用 `setAccessLevel(TRUSTED_CONTEXTS)`。这减少内
 2. 过滤隐藏、可编辑、代码、表单与交互区域；重复运行时复用内容脚本内缓存的原文。
 3. 正规化空白，以内容脚本内的 WeakMap 为节点分配不可被网页伪造的 ID，并去除嵌套重复候选。
 4. 通过 `src/core/translation-planning.ts` 的纯函数按 4000 字符预算创建批次。
-5. Service Worker 根据文本、语言、Provider、模型和提示词生成 SHA-256 缓存键，并在可信 IndexedDB 查询译文。用户重新点击“翻译当前网页”时显式绕过缓存；动态增量和其他非强制请求仍可使用缓存。
+5. Service Worker 根据文本、语言、Provider、模型和提示词生成 SHA-256 缓存键。保险箱已解锁时才在可信 IndexedDB 查询持久译文；锁定时只允许本次页面的内存复用。用户重新点击“翻译当前网页”时显式绕过缓存；动态增量和其他非强制请求仍可使用可用缓存。
 6. 全命中直接返回缓存，不读取 Key、不调用 Provider、不新增用量记录；部分命中只构造未命中子请求。
-7. Service Worker 从可信存储读取 Provider 配置和 Key。
-8. Provider 将页面文本视为不可信数据，请求模型只执行翻译；单次请求 60 秒超时，429、5xx 和网络错误最多进行三次指数退避尝试。
-9. Service Worker 校验 JSON、段落数、ID 和字段类型，写入缓存后按原请求顺序合并命中与新译文。
-10. Translator Script 通过 ID 定位节点，以纯文本插入译文，并用原文 wrapper 支持双语、仅原文和仅译文三种 CSS 显示方式。每个候选块附带标准化原文色、有效背景色、偏好色和本地对比度；模型只能返回 `preferred` / `source` 建议，本地 WCAG 门禁最终决定实际颜色并通过已校验的内联属性应用。网页不创建全局状态浮层，状态只保留在扩展上下文。
-11. 用户主动启动后，Translator Script 在当前运行会话内监听文档根节点的新增、可见性和文本变化；去抖后只收集尚无当前语言译文的块，复用同一串行批次与缓存链路。节点被移出后离线改写再插回、或整个 `body` 被替换时，旧 WeakMap 源文本快照会失效。
-12. 用户停止时，Translator Script 断开 Observer、清理待处理扫描并阻止后续批次，Service Worker 同时按标签页取消当前在途请求。
-13. 翻译启动成功后，Service Worker 仅在 storage.session 记录最近翻译标签页 ID。Options 诊断请求读取该 ID，向 Translator Script 请求脱敏计数，再在本地生成诊断对象；路径必须由用户单独同意，下载使用浏览器本地 Blob，不自动上传。
-14. Popup 在翻译进行中轮询当前页的脱敏状态以同步单一操作按钮；该查询不读取网页正文、Key 或 Provider 响应。模型切换和语言对只更新可信设置，用户再次触发翻译后才产生新请求。
-15. 用户从 Chrome Context Menu 或选区边角快捷图标触发选区翻译时，Service Worker 按 `frameId` 注入 Translator Script；Translator Script 重新核对当前选区和正文锚点，跨段选区作为一个缓存块在锚点后插入纯文本译文。快捷图标只在用户打开 Popup/开启设置后按需注入当前页，不注册静态全站脚本。
-16. Popup 与 Options 的语言选择共享 `src/ui/LanguagePairPicker.tsx`，页面样式必须通过组件级 class 和显式网格维护，避免宽泛后代选择器造成跨组件污染。
+7. 在首次未命中且即将发送页面文本前，Service Worker 检查版本化确认。未确认时只返回受控状态，不向 Provider 发送文本；隐私实践版本变化后重新确认。
+8. Service Worker 从可信存储读取非敏感配置和会话 Key，或从已解锁保险箱读取持久 Key。
+9. Provider 将页面文本视为不可信数据，请求模型只执行翻译；单次请求 60 秒超时，429、5xx 和网络错误最多进行三次指数退避尝试。
+10. Service Worker 校验 JSON、段落数、ID 和字段类型；仅在保险箱可用时加密写入持久缓存，再按原请求顺序合并命中与新译文。
+11. Translator Script 通过 ID 定位节点，以纯文本插入译文，并用原文 wrapper 支持双语、仅原文和仅译文三种 CSS 显示方式。每个候选块附带标准化原文色、有效背景色、偏好色和本地对比度；模型只能返回 `preferred` / `source` 建议，本地 WCAG 门禁最终决定实际颜色并通过已校验的内联属性应用。译文由 source owner ID 归属并在重复扫描时对账，确保每个真实源节点最多有一份同语言译文。实验性 CSS Custom Highlight 只装饰源范围，不能替代译文节点；不支持、切换或清理失败时回退/清除 adjacent 路径。网页不创建全局状态浮层，状态只保留在扩展上下文。
+12. 用户主动启动后，Translator Script 在当前运行会话内监听文档根节点的新增、可见性和文本变化；去抖后只收集尚无当前语言译文的块，复用同一串行批次与缓存链路。节点被移出后离线改写再插回、或整个 `body` 被替换时，旧 WeakMap 源文本快照会失效；TextDuet 自身节点（包括整页译文、选区译文、选区错误提示和快捷入口）、交互控件、代码、表单、可编辑和隐藏区域始终排除，避免插件输出再次成为 Provider 输入。
+13. 用户停止时，Translator Script 断开 Observer、清理待处理扫描并阻止后续批次，Service Worker 同时按标签页取消当前在途请求。
+14. 翻译启动成功后，Service Worker 仅在 storage.session 记录最近翻译标签页 ID。Options 诊断请求读取该 ID，向 Translator Script 请求脱敏计数，再在本地生成诊断对象；路径必须由用户单独同意，下载使用浏览器本地 Blob，不自动上传。
+15. Popup 在翻译进行中轮询当前页的脱敏状态以同步单一操作按钮；该查询不读取网页正文、Key 或 Provider 响应。模型切换和语言对只更新可信设置，用户再次触发翻译后才产生新请求。
+16. 用户从 Chrome Context Menu 或选区边角快捷图标触发选区翻译时，Service Worker 按 `frameId` 注入 Translator Script；Translator Script 重新核对当前选区和正文锚点，跨段选区作为一个缓存块在锚点后插入纯文本译文。快捷图标只在用户打开 Popup/开启设置后按需注入当前页，不注册静态全站脚本。
+17. Popup 与 Options 的语言选择共享 `src/ui/LanguagePairPicker.tsx`，页面样式必须通过组件级 class 和显式网格维护，避免宽泛后代选择器造成跨组件污染。
 
 ## 9. 安全清单
 
@@ -191,9 +201,13 @@ Service Worker 启动后调用 `setAccessLevel(TRUSTED_CONTEXTS)`。这减少内
 - [x] HTTP 401/403、402、404、429、5xx 与网络错误的产品文案映射。
 - [x] 单请求超时、按标签页取消与有限指数退避。
 - [x] 翻译缓存容量、过期、LRU 淘汰与清理策略。
+- [x] 持久 API Key 与译文缓存由 AES-GCM 保险箱保护；密码不落盘，公开设置不含秘密。
+- [x] 旧版明文 Key/`apiKeyByOrigin` 清理迁移与 v1 明文缓存删除路径。
+- [x] 首次页面文本外发的版本化确认与重新确认路径。
 - [x] 动态新增正文增量去重，停止时清理 Observer 与待处理扫描。
-- [x] Alpha 本地安装候选完成威胁边界与隐私文档复核。
-- [ ] 商店隐私审查仅在未来独立立项商店分发时执行。
+- [x] active/inactive 对账扫描与 SPA 包装恢复不会递归翻译 TextDuet 节点。
+- [x] `0.2.0` 公开材料、隐私政策与发布门禁已准备，尚未代表发布。
+- [ ] GitHub Pages 中英文隐私政策公开可访问，Chrome Web Store Dashboard 披露与最终 ZIP 完成复核。
 
 ## 9.1 M1 成本核算
 
@@ -214,7 +228,7 @@ M1 增加独立的 `CostEstimator` 与 `UsageLedger`，不得把成本计算散�
 - `src/core/pricing-sources.ts` 按精确 HTTPS API 主机名识别官方来源；`src/providers/official-pricing.ts` 只访问已确认的官方结构化价格 API，并由 Service Worker 统一调用。
 - 聚合账本使用 `textduet-usage` IndexedDB v1，按本地日期、币种、Provider 和模型保存，不含 Key、网页正文或 URL。
 - `GET_USAGE_HISTORY` 在可信上下文按最近 60 个本地日期返回全局聚合与按 Provider/模型分组的每日 token 序列，两者都补齐空日期；读取历史与成功记账前会删除更早记录和旧 Alpha 留下的含估算聚合记录，不升级 IndexedDB 结构。
-- Options 的 ECharts 图表只使用按需模块，用户先选择模型再查看该模型的每日输入/输出曲线；输入使用实线、输出使用虚线，Y 轴以当前序列最大量级选择 token/K/M/B，模型汇总同时提供文字值。Popup 和账单卡不展示本地计算金额。
+- Options 的 SVG 图表按需加载，用户先选择模型再查看该模型的每日输入/输出曲线；输入使用实线、输出使用虚线，Y 轴以当前序列最大量级选择 token/K/M/B，模型汇总同时提供文字值。Popup 和账单卡不展示本地计算金额。
 - Provider 返回 `prompt_tokens`/`completion_tokens` 时记为实际 usage；缺失时仍返回本次预估，但 `isLedgerRecorded` 为 false 且不改变历史曲线。
 - `GET_PROVIDER_BALANCE` 只从可信设置读取已保存 Key，仅当 Base URL Origin 精确为 `https://api.deepseek.com` 时访问官方 `/user/balance`；响应经 schema 校验后脱敏返回 Options，不持久化。
 - IndexedDB 失败不会丢弃已经付费返回的译文；界面会提示该批次未成功记入本地账本。
@@ -238,7 +252,7 @@ TextDuet 不新增、保存或传输 Admin/Management/云账号访问凭证。�
 ## 9.2 M1 本地翻译缓存
 
 - `src/core/translation-cache.ts` 负责确定性缓存键、大小估算、过期/LRU 选择和响应顺序合并。
-- `src/storage/translation-cache.ts` 使用独立的 `textduet-translation-cache` IndexedDB v1；缓存条目不持久化源文本、Key、认证头或 URL。
+- `src/storage/translation-cache.ts` 使用独立的 `textduet-translation-cache` IndexedDB v2；缓存条目保存版本化 AES-GCM 密文和最小上下文元数据，不持久化源文本、Key、认证头或 URL。只有保险箱解锁时才读写持久缓存。
 - 缓存键包含固定 schema/prompt 版本、Provider、模型、语言对、实际系统提示词和源文本，再保存为 SHA-256 摘要。
 - 默认有效期为 30 天，容量上限为 50 MiB；写入后先删除过期项，再淘汰最久未访问项。
 - `src/background/translation-service.ts` 在付费调用前编排缓存；全命中跳过 Key 和 Provider，部分命中只结算未命中部分。
@@ -255,7 +269,9 @@ TextDuet 不新增、保存或传输 Admin/Management/云账号访问凭证。�
 - 文本分批预算。
 - DOM 候选过滤。
 - 设置迁移与密钥存储模式。
-- 缓存键失效维度、过期/LRU、全命中跳过 Provider、部分命中合并与失败降级。
+- 保险箱创建/解锁/锁定/删除、错误密码、旧版明文 Key 迁移与公开设置脱敏。
+- 缓存键失效维度、加密读写、过期/LRU、全命中跳过 Provider、部分命中合并与失败降级。
+- 首次页面文本外发确认及版本变更后的重新确认。
 
 ### 浏览器集成测试
 
@@ -263,6 +279,7 @@ TextDuet 不新增、保存或传输 Admin/Management/云账号访问凭证。�
 - Options 权限申请与连接测试。
 - 普通文章翻译、停止、重复翻译。
 - 虚拟列表节点复用、正文容器替换和 Service Worker 回收后的恢复。
+- active/inactive 往返、SPA 重包装和同文本真实节点的单次归属渲染。
 - 页面返回脚本字符串时不执行。
 - Service Worker 被回收后可继续工作。
 
@@ -277,9 +294,9 @@ TextDuet 不新增、保存或传输 Admin/Management/云账号访问凭证。�
 
 真实 Key 只在本地手工测试或受保护的 CI Secret 中使用，不进入测试夹具和日志。
 
-## 11. 下一阶段架构任务
+## 11. `0.2.0` 发布前架构任务
 
-1. 将逐批状态持久化到可信上下文，使 Popup 重开后可恢复当前任务摘要。
-2. 把公开网页矩阵接入可控的周期回归，并保持环境失败与产品失败分离。
-3. 继续完善用户预览后主动下载/提交的兼容性诊断包，并在可启动扩展 Service Worker 的 Chrome 环境补齐成功路径回归。
-4. 经独立立项后评估远程维护的数字价格目录；在可验证更新机制就绪前保持手动价格。
+1. 在全新 Chrome Profile 验证保险箱、旧版迁移、首次确认、锁定缓存、active/inactive 重扫和 Provider 错误路径；这不能由构建或单测替代。
+2. 部署并从公开网络复核 GitHub Pages 的英文与中文隐私页，再把同一稳定 URL 填入 Chrome Web Store；当前两个 URL 返回 `404`，是发布阻断项。
+3. 使用 `.nvmrc` 固定的 Node 22 从全新克隆重跑构建、ZIP、SBOM、许可证与 SHA-256 门禁，确认提交商店和 GitHub Release 的 ZIP 为同一文件。
+4. 商店审核通过后，由项目所有者同步创建 `v0.2.0` tag、GitHub Release 和发布附件；此前不得写为“已发布”。

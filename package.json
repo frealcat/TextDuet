@@ -1,9 +1,28 @@
 {
   "name": "textduet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "A local-first, open-source bilingual webpage translator powered by user-provided model APIs.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/frealcat/TextDuet.git"
+  },
+  "homepage": "https://frealcat.github.io/TextDuet/",
+  "bugs": {
+    "url": "https://github.com/frealcat/TextDuet/issues"
+  },
+  "author": {
+    "name": "frealcat",
+    "email": "frealcat@gmail.com"
+  },
+  "keywords": [
+    "chrome-extension",
+    "translation",
+    "bilingual",
+    "byok",
+    "webpage-translator"
+  ],
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -17,13 +36,17 @@
     "test:browser:billing": "node .playwright/extension-billing.mjs",
     "test:browser:options": "node .playwright/options-visual-td017.mjs",
     "test:browser:sites": "node .playwright/extension-site-matrix.mjs",
-    "release:check": "npm run typecheck && npm test && npm run build && npm run zip && node scripts/verify-release.mjs"
+    "test:browser:smoke": "node .playwright/extension-smoke.mjs",
+    "pages:build": "node scripts/build-pages.mjs",
+    "pages:verify": "node scripts/verify-pages.mjs",
+    "release:metadata": "node scripts/generate-sbom.mjs",
+    "release:checksums": "node scripts/generate-checksums.mjs",
+    "release:source-check": "node scripts/verify-source.mjs",
+    "release:notes-check": "node scripts/verify-release-notes.mjs",
+    "release:check": "npm run release:source-check && npm run release:metadata && npm run typecheck && npm test && npm run build && npm run zip && npm run release:checksums && node scripts/verify-release.mjs && npm run pages:build && npm run pages:verify"
   },
   "dependencies": {
     "@radix-ui/react-radio-group": "^1.4.7",
-    "@wxt-dev/module-react": "^1.2.2",
-    "echarts": "^6.1.0",
-    "lucide-react": "^1.31.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^4.4.3"
@@ -32,6 +55,8 @@
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@wxt-dev/module-react": "^1.2.2",
+    "playwright": "1.62.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10",
     "wxt": "^0.21.4"
