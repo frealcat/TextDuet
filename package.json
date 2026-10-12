@@ -46,15 +46,15 @@
     "release:check": "npm run release:source-check && npm run release:metadata && npm run typecheck && npm test && npm run build && npm run zip && npm run release:checksums && node scripts/verify-release.mjs && npm run pages:build && npm run pages:verify"
   },
   "dependencies": {
-    "@radix-ui/react-radio-group": "^1.4.7",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "zod": "^4.4.3"
+    "@radix-ui/react-radio-group": "^1.4.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@wxt-dev/module-react": "^1.2.2",
     "playwright": "1.62.1",
     "typescript": "^7.0.2",
